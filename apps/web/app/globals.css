@@ -1,0 +1,121 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink: #0b0c0f;
+  --graphite: #12141a;
+  --paper: #181b22;
+  --bone: #e8e2d6;
+  --muted: #8d877b;
+  --line: #2a2d36;
+  --brass: #c9a36a;
+  --sage: #7f8f7a;
+  --mist: #7b8898;
+  --hairline: rgba(232, 226, 214, 0.1);
+}
+
+html,
+body {
+  background: var(--ink);
+  color: var(--bone);
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-display), serif;
+  font-optical-sizing: auto;
+}
+
+::selection {
+  background: rgba(201, 163, 106, 0.28);
+  color: var(--bone);
+}
+
+* {
+  box-shadow: none !important;
+}
+
+input,
+textarea,
+button {
+  font: inherit;
+}
+
+.grain {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  opacity: 0.18;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+}
+
+.dot-grid {
+  background-image: radial-gradient(rgba(232, 226, 214, 0.07) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.node-pulse {
+  animation: nodePulse 900ms ease-out;
+}
+
+@keyframes nodePulse {
+  0% {
+    stroke: var(--brass);
+    stroke-width: 1.2;
+  }
+  55% {
+    stroke: var(--bone);
+    stroke-width: 2.2;
+  }
+  100% {
+    stroke: rgba(232, 226, 214, 0.28);
+    stroke-width: 1.15;
+  }
+}
+
+.ink-fade {
+  animation: inkFade 480ms ease forwards;
+}
+
+@keyframes inkFade {
+  to {
+    opacity: 0;
+  }
+}
+
+.file-in {
+  animation: fileIn 280ms ease both;
+}
+
+@keyframes fileIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.hero-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: drawIn 1.4s ease forwards;
+}
+
+@keyframes drawIn {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--line);
+}
