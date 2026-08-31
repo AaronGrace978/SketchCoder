@@ -1,5 +1,7 @@
 # SketchCoder
 
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/95775a77-35ad-4b3a-b9ed-6c582bd5d18c" />
+
 Draw Projects Like a Boss.
 
 Sketch systems with your mouse — or spell a word like **RAG** — and the agent screenshots the board and writes the scaffolding.
