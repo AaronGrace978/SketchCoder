@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { ragDemoDoc } from "@sketchcoder/graph";
 import { SketchCanvas } from "@/components/canvas/SketchCanvas";
 import { Rail } from "@/components/studio/Rail";
+import { SettingsPanel } from "@/components/studio/SettingsPanel";
 import { Toolbar } from "@/components/studio/Toolbar";
 import { useSketch, type Tool } from "@/lib/store";
 
@@ -69,6 +70,7 @@ export function StudioApp({ loadDemo }: { loadDemo?: boolean }) {
             SketchCoder
           </Link>
           <div className="pointer-events-auto flex items-center gap-5">
+            <SettingsPanel />
             <button
               className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted hover:text-bone"
               onClick={() => useSketch.getState().clearStrokes()}

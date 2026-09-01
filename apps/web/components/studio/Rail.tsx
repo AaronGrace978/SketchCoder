@@ -40,6 +40,7 @@ export function Rail() {
         <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted">
           Pen-write RAG / CRUD / AGENT, or draw typed boxes + arrows. Generate
           screenshots the board and builds a runnable zip. Ctrl+Z undoes a replace.
+          Vision: open <span className="text-bone">Settings</span> and add your Ollama Cloud or OpenAI key.
         </p>
       </div>
 

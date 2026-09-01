@@ -111,7 +111,7 @@ export async function* generateScaffold(
       nextSteps: [
         "Use the pen and write RAG across the board.",
         "Or load the RAG demo and hit Generate.",
-        "Add OPENAI_API_KEY for vision reading of handwriting.",
+        "Add a model API key in Settings for vision reading of handwriting.",
       ],
       pattern: "generic",
     };

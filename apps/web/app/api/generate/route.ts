@@ -9,6 +9,9 @@ export async function POST(req: Request) {
     doc?: unknown;
     imageDataUrl?: string;
     ocrText?: string;
+    apiKey?: string;
+    baseUrl?: string;
+    model?: string;
   };
   const checked = validateDoc(body.doc);
   if (!checked.ok) {
@@ -24,9 +27,9 @@ export async function POST(req: Request) {
       };
       try {
         for await (const event of generateScaffold(doc, {
-          apiKey: process.env.OPENAI_API_KEY || undefined,
-          baseUrl: process.env.OPENAI_BASE_URL,
-          model: process.env.OPENAI_MODEL,
+          apiKey: body.apiKey || process.env.OPENAI_API_KEY || undefined,
+          baseUrl: body.baseUrl || process.env.OPENAI_BASE_URL,
+          model: body.model || process.env.OPENAI_MODEL,
           imageDataUrl: body.imageDataUrl,
           ocrText: body.ocrText,
         })) {

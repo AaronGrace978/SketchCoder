@@ -1,6 +1,7 @@
 import type { GenerateEvent } from "@sketchcoder/agent";
 import { detectPatternWord } from "@sketchcoder/graph";
 import { captureBoardPng, captureInkOcrPng } from "./screenshot";
+import { loadSettings, settingsForApi } from "./settings";
 import { useSketch } from "./store";
 
 export async function runGenerate() {
@@ -48,6 +49,7 @@ export async function runGenerate() {
   const localHint = ocrText || intentHint;
 
   try {
+    const modelSettings = settingsForApi(loadSettings());
     const res = await fetch("/api/generate", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -55,6 +57,7 @@ export async function runGenerate() {
         doc: store.exportDoc(),
         imageDataUrl,
         ocrText: localHint,
+        ...modelSettings,
       }),
     });
     if (!res.ok || !res.body) throw new Error("Generate failed");
