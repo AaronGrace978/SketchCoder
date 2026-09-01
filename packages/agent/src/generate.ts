@@ -30,19 +30,20 @@ export async function* generateScaffold(
   if (options.imageDataUrl || options.ocrText) {
     yield { type: "capture" };
 
-    let read = options.imageDataUrl
-      ? await readSketchImage({
-          imageDataUrl: options.imageDataUrl,
-          doc,
-          apiKey: options.apiKey,
-          baseUrl: options.baseUrl,
-          model: options.model,
-        })
-      : null;
+    // Prefer OCR / pattern text first so spelling still works with boxes present.
+    let read = await readSketchImage({
+      imageDataUrl: options.imageDataUrl || "",
+      doc,
+      apiKey: options.apiKey,
+      baseUrl: options.baseUrl,
+      model: options.model,
+      ocrText: options.ocrText,
+    });
 
-    if ((!read || !read.doc) && options.ocrText) {
+    if ((!read.doc || read.source === "graph") && options.ocrText) {
       const { detectPatternWord, docForPattern } = await import("@sketchcoder/graph");
-      const pattern = detectPatternWord(options.ocrText) || detectPatternWord(doc.intent);
+      const pattern =
+        detectPatternWord(options.ocrText) || detectPatternWord(doc.intent);
       if (pattern) {
         const short = options.ocrText.trim().length <= 12;
         const canned = docForPattern(
@@ -54,7 +55,7 @@ export async function* generateScaffold(
           pattern,
           intent: canned.intent,
           doc: canned,
-          source: "offline",
+          source: "ocr",
         };
       }
     }
@@ -67,12 +68,38 @@ export async function* generateScaffold(
         source: read.source,
       };
       if (read.doc) {
+        // Only replace the board when we expanded a word/demo or vision rebuilt it.
+        const shouldReplace =
+          read.source === "ocr" ||
+          read.source === "vision" ||
+          read.source === "offline" ||
+          (read.source === "graph" && read.doc !== doc);
         working = {
           ...read.doc,
           intent: read.intent || read.doc.intent || doc.intent,
         };
-        yield { type: "graph", doc: working };
+        if (shouldReplace && graphsDiffer(doc, working)) {
+          yield { type: "graph", doc: working };
+        }
       }
+    }
+  }
+
+  // Empty board but intent names a pattern → expand.
+  if (!working.nodes.length) {
+    const { detectPatternWord, docForPattern } = await import("@sketchcoder/graph");
+    const pattern =
+      detectPatternWord(options.ocrText || "") ||
+      detectPatternWord(working.intent);
+    if (pattern) {
+      working = docForPattern(pattern, working.intent);
+      yield {
+        type: "read",
+        text: pattern.toUpperCase(),
+        pattern,
+        source: "offline",
+      };
+      yield { type: "graph", doc: working };
     }
   }
 
@@ -92,7 +119,10 @@ export async function* generateScaffold(
   }
 
   const base = scaffoldFromGraph(working);
-  const adapted = options.apiKey ? await maybeAdapt(working, base, options) : base;
+  // Keep templates authoritative; optional LLM adapt only fills labels safely.
+  const adapted = options.apiKey
+    ? await maybeAdapt(working, base, options)
+    : base;
   const order = topologicalOrder(working);
 
   yield {
@@ -130,6 +160,15 @@ export async function* generateScaffold(
   };
 }
 
+function graphsDiffer(a: SketchDoc, b: SketchDoc): boolean {
+  if (a.nodes.length !== b.nodes.length || a.edges.length !== b.edges.length) {
+    return true;
+  }
+  const aIds = a.nodes.map((n) => n.id).sort().join(",");
+  const bIds = b.nodes.map((n) => n.id).sort().join(",");
+  return aIds !== bIds || a.intent !== b.intent;
+}
+
 async function maybeAdapt(
   doc: SketchDoc,
   base: ScaffoldResult,
@@ -147,7 +186,11 @@ async function maybeAdapt(
         model: options.model || "gpt-4o-mini",
         temperature: 0.2,
         messages: [
-          { role: "system", content: "You output JSON only." },
+          {
+            role: "system",
+            content:
+              "You output JSON only. Keep every original file path. Only refine content; do not drop core files.",
+          },
           { role: "user", content: adaptPrompt(doc, base) },
         ],
       }),
@@ -158,11 +201,19 @@ async function maybeAdapt(
     };
     const parsed = parseModelJson(json.choices?.[0]?.message?.content ?? "");
     if (!parsed?.files?.length) return base;
+
+    // Merge adapted content onto base paths only — never lose scaffolding.
+    const byPath = new Map(base.files.map((f) => [f.path, f.content]));
+    for (const f of parsed.files) {
+      if (byPath.has(f.path) && typeof f.content === "string" && f.content.length > 20) {
+        byPath.set(f.path, f.content);
+      }
+    }
     return {
       ...base,
       summary: parsed.summary || base.summary,
       nextSteps: parsed.nextSteps?.length ? parsed.nextSteps : base.nextSteps,
-      files: parsed.files,
+      files: [...byPath.entries()].map(([path, content]) => ({ path, content })),
     };
   } catch {
     return base;

@@ -5,7 +5,6 @@ import { edgePath } from "./geometry";
 const BOARD_BG = "#0b0c0f";
 const BONE = "#e8e2d6";
 const BRASS = "#c9a36a";
-const MUTED = "#8d877b";
 const LINE = "rgba(232,226,214,0.28)";
 
 export type BoardSnapshot = {
@@ -17,23 +16,62 @@ export type BoardSnapshot = {
   height: number;
 };
 
-/** Renders the live board into a PNG data URL for vision / OCR. */
+type Bounds = { minX: number; minY: number; maxX: number; maxY: number };
+
+function worldBounds(board: BoardSnapshot): Bounds | null {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const grow = (x: number, y: number, w = 0, h = 0) => {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + w);
+    maxY = Math.max(maxY, y + h);
+  };
+  for (const n of board.nodes) grow(n.x, n.y, n.w, n.h);
+  for (const s of board.strokes) {
+    for (const p of s.points) grow(p.x, p.y);
+  }
+  if (!Number.isFinite(minX)) return null;
+  const pad = 48;
+  return {
+    minX: minX - pad,
+    minY: minY - pad,
+    maxX: maxX + pad,
+    maxY: maxY + pad,
+  };
+}
+
+/** Renders the full board content (not just the visible viewport) for vision. */
 export function captureBoardPng(board: BoardSnapshot): string {
+  const bounds = worldBounds(board);
+  const padW = 960;
+  const padH = 540;
+  const worldW = bounds ? Math.max(320, bounds.maxX - bounds.minX) : padW;
+  const worldH = bounds ? Math.max(240, bounds.maxY - bounds.minY) : padH;
+  const ox = bounds?.minX ?? 0;
+  const oy = bounds?.minY ?? 0;
+
   const canvas = document.createElement("canvas");
   const scale = 2;
-  canvas.width = Math.max(640, Math.floor(board.width * scale));
-  canvas.height = Math.max(400, Math.floor(board.height * scale));
+  // Cap size so vision payloads stay reasonable.
+  const maxSide = 1600;
+  const fit = Math.min(1, maxSide / Math.max(worldW, worldH));
+  const cssW = Math.ceil(worldW * fit);
+  const cssH = Math.ceil(worldH * fit);
+  canvas.width = Math.max(640, cssW * scale);
+  canvas.height = Math.max(400, cssH * scale);
   const ctx = canvas.getContext("2d");
   if (!ctx) return "";
 
   ctx.scale(scale, scale);
   ctx.fillStyle = BOARD_BG;
-  ctx.fillRect(0, 0, board.width, board.height);
+  ctx.fillRect(0, 0, cssW, cssH);
 
-  // Dot grid
   ctx.fillStyle = "rgba(232,226,214,0.08)";
-  for (let x = 0; x < board.width; x += 22) {
-    for (let y = 0; y < board.height; y += 22) {
+  for (let x = 0; x < cssW; x += 22) {
+    for (let y = 0; y < cssH; y += 22) {
       ctx.beginPath();
       ctx.arc(x, y, 0.8, 0, Math.PI * 2);
       ctx.fill();
@@ -41,20 +79,17 @@ export function captureBoardPng(board: BoardSnapshot): string {
   }
 
   ctx.save();
-  ctx.translate(board.viewport.x, board.viewport.y);
-  ctx.scale(board.viewport.zoom, board.viewport.zoom);
+  ctx.scale(fit, fit);
+  ctx.translate(-ox, -oy);
 
   for (const edge of board.edges) {
     const from = board.nodes.find((n) => n.id === edge.from);
     const to = board.nodes.find((n) => n.id === edge.to);
     if (!from || !to) continue;
-    const d = edgePath(from, to);
-    strokeSvgPath(ctx, d, LINE, 1.4);
+    strokeSvgPath(ctx, edgePath(from, to), LINE, 1.4);
   }
 
-  for (const node of board.nodes) {
-    drawNode(ctx, node);
-  }
+  for (const node of board.nodes) drawNode(ctx, node);
 
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
@@ -122,7 +157,6 @@ function roundRect(
   ctx.closePath();
 }
 
-/** Minimal SVG path stroker for M/L/C commands used by the board. */
 function strokeSvgPath(
   ctx: CanvasRenderingContext2D,
   d: string,
@@ -137,31 +171,22 @@ function strokeSvgPath(
   while (i < tokens.length) {
     const cmd = tokens[i++];
     if (cmd === "M") {
-      const x = Number(tokens[i++]);
-      const y = Number(tokens[i++]);
-      ctx.moveTo(x, y);
+      ctx.moveTo(Number(tokens[i++]), Number(tokens[i++]));
     } else if (cmd === "L") {
-      const x = Number(tokens[i++]);
-      const y = Number(tokens[i++]);
-      ctx.lineTo(x, y);
+      ctx.lineTo(Number(tokens[i++]), Number(tokens[i++]));
     } else if (cmd === "C") {
-      const x1 = Number(tokens[i++]);
-      const y1 = Number(tokens[i++]);
-      const x2 = Number(tokens[i++]);
-      const y2 = Number(tokens[i++]);
-      const x = Number(tokens[i++]);
-      const y = Number(tokens[i++]);
-      ctx.bezierCurveTo(x1, y1, x2, y2, x, y);
+      ctx.bezierCurveTo(
+        Number(tokens[i++]),
+        Number(tokens[i++]),
+        Number(tokens[i++]),
+        Number(tokens[i++]),
+        Number(tokens[i++]),
+        Number(tokens[i++])
+      );
     } else {
-      // bare numbers from pathFromPoints "M x y L x y"
       i--;
       break;
     }
-  }
-  // Fallback for pathFromPoints style without repeated L cmds handled above
-  if (d.includes("L") || d.startsWith("M")) {
-    ctx.stroke();
-    return;
   }
   ctx.stroke();
 }
@@ -210,5 +235,3 @@ export function captureInkOcrPng(strokes: InkStroke[]): string | null {
   }
   return canvas.toDataURL("image/png");
 }
-
-export { MUTED };

@@ -38,7 +38,8 @@ export function Rail() {
             : "Generate"}
         </button>
         <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted">
-          Spell a word on the board — RAG, CRUD, AGENT — then Generate. We screenshot the ink and build from it.
+          Pen-write RAG / CRUD / AGENT, or draw typed boxes + arrows. Generate
+          screenshots the board and builds a runnable zip. Ctrl+Z undoes a replace.
         </p>
       </div>
 
@@ -128,7 +129,8 @@ export function Rail() {
           <p className="px-5 pb-3 text-[13px] leading-relaxed text-muted">{generation.summary}</p>
         ) : (
           <p className="px-5 pb-3 text-[13px] leading-relaxed text-muted">
-            Write RAG with the pen. Generate takes a screenshot and scaffolds the system.
+            Write RAG with the pen, or sketch Client → API → Store. Generate
+            captures the board and streams scaffolding.
           </p>
         )}
         {generation.nextSteps.length ? (

@@ -11,7 +11,12 @@ export function matchPattern(doc: SketchDoc): PatternMatch {
     scoreGeneric(doc),
   ];
   scores.sort((a, b) => b.score - a.score);
-  return scores[0];
+  const top = scores[0];
+  // Require a clear lead over generic unless intent strongly matches.
+  if (top.kind !== "generic" && top.score < 6) {
+    return scoreGeneric(doc);
+  }
+  return top;
 }
 
 function scoreRag(doc: SketchDoc): PatternMatch {
@@ -27,12 +32,17 @@ function scoreRag(doc: SketchDoc): PatternMatch {
     services[1] ??
     services[0];
   let score = 0;
-  if (store) score += 3;
-  if (model) score += 3;
-  if (services.length) score += 2;
+  if (store && model) score += 5;
+  else {
+    if (store) score += 2;
+    if (model) score += 2;
+  }
+  if (services.length >= 2) score += 2;
+  else if (services.length) score += 1;
   if (api) score += 1;
   if (client) score += 1;
-  if (/rag|citation|retriev|vector/i.test(doc.intent)) score += 4;
+  if (/rag|citation|retriev|vector/i.test(doc.intent)) score += 5;
+  if (/vector|retriev|embed/i.test(doc.nodes.map((n) => n.label).join(" "))) score += 2;
   return {
     kind: "rag",
     score,
@@ -54,12 +64,16 @@ function scoreCrud(doc: SketchDoc): PatternMatch {
   const client = nodeByType(doc, "client")[0];
   const model = nodeByType(doc, "model")[0];
   let score = 0;
-  if (store) score += 3;
-  if (api) score += 3;
+  if (store && api) score += 5;
+  else {
+    if (store) score += 2;
+    if (api) score += 2;
+  }
   if (client) score += 2;
   if (!model) score += 1;
-  if (/crud|rest|resource|admin/i.test(doc.intent)) score += 4;
-  if (model) score -= 2;
+  if (/crud|rest api|resource|admin/i.test(doc.intent)) score += 5;
+  if (model) score -= 3;
+  if (nodeByType(doc, "queue").length) score -= 2;
   return {
     kind: "crud",
     score,
@@ -73,13 +87,13 @@ function scoreAgent(doc: SketchDoc): PatternMatch {
   const tools = [
     ...nodeByType(doc, "external"),
     ...nodeByType(doc, "service"),
-    ...nodeByType(doc, "api"),
   ];
   let score = 0;
   if (model) score += 3;
-  if (tools.length >= 2) score += 2;
+  if (tools.length >= 1 && model) score += 3;
   if (client) score += 1;
-  if (/agent|tool|chat|orchestr/i.test(doc.intent)) score += 4;
+  if (/agent|tool|chat|orchestr/i.test(doc.intent)) score += 5;
+  if (!model) score -= 2;
   return {
     kind: "agent",
     score,
@@ -97,10 +111,11 @@ function scoreWebhook(doc: SketchDoc): PatternMatch {
   const external = nodeByType(doc, "external")[0];
   const api = nodeByType(doc, "api")[0];
   let score = 0;
-  if (queue) score += 4;
+  if (queue) score += 5;
   if (external) score += 2;
   if (api) score += 1;
-  if (/webhook|worker|ingest|queue|job/i.test(doc.intent)) score += 4;
+  if (/webhook|worker|ingest|queue|job/i.test(doc.intent)) score += 5;
+  if (!queue) score -= 2;
   return {
     kind: "webhook",
     score,
@@ -117,7 +132,7 @@ function scoreWebhook(doc: SketchDoc): PatternMatch {
 function scoreGeneric(doc: SketchDoc): PatternMatch {
   return {
     kind: "generic",
-    score: 1 + doc.nodes.length * 0.1,
+    score: 2 + doc.nodes.length * 0.15,
     slots: {},
   };
 }

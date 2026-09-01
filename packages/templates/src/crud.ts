@@ -5,7 +5,7 @@ export function buildCrud(doc: SketchDoc, match: PatternMatch): ScaffoldResult {
   const api = labelOf(match.slots.api, "API");
   const store = labelOf(match.slots.store, "Store");
   const client = labelOf(match.slots.client, "Client");
-  const resource = slug(doc.intent.split(" ")[0] || "item");
+  const resource = inferResource(doc.intent);
   const Resource = resource.charAt(0).toUpperCase() + resource.slice(1);
   const pkg = slug(doc.intent || "crud-api");
 
@@ -164,4 +164,21 @@ export function buildCrud(doc: SketchDoc, match: PatternMatch): ScaffoldResult {
     files,
     nodeFiles,
   };
+}
+
+function inferResource(intent: string): string {
+  const text = intent.toLowerCase();
+  const forMatch = text.match(/\bfor\s+([a-z][a-z0-9_-]*)/i);
+  if (forMatch?.[1] && !/^(a|an|the|my|our|crud|rest|api)$/i.test(forMatch[1])) {
+    return slug(forMatch[1]);
+  }
+  const noun = text.match(
+    /\b(notes?|posts?|users?|items?|tasks?|books?|products?|orders?|docs?|documents?)\b/i
+  );
+  if (noun?.[1]) return slug(noun[1].replace(/s$/, "") || noun[1]);
+  const words = intent
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-zA-Z0-9]/g, ""))
+    .filter((w) => w.length > 2 && !/^(crud|rest|api|with|list|create|update|delete|the|and)$/i.test(w));
+  return slug(words[0] || "item");
 }

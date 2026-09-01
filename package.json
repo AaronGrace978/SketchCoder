@@ -8,6 +8,10 @@
   "scripts": {
     "dev": "npm run dev -w @sketchcoder/web",
     "build": "npm run build -w @sketchcoder/web",
-    "start": "npm run start -w @sketchcoder/web"
+    "start": "npm run start -w @sketchcoder/web",
+    "verify": "npx tsx scripts/verify-scaffold.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.13"
   }
 }

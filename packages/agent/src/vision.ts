@@ -11,7 +11,7 @@ export type VisionRead = {
   pattern: PatternWord | null;
   intent: string;
   doc: SketchDoc | null;
-  source: "vision" | "offline" | "graph";
+  source: "vision" | "offline" | "graph" | "ocr";
 };
 
 export async function readSketchImage(options: {
@@ -20,8 +20,13 @@ export async function readSketchImage(options: {
   apiKey?: string;
   baseUrl?: string;
   model?: string;
+  ocrText?: string;
 }): Promise<VisionRead> {
-  const { imageDataUrl, doc, apiKey, baseUrl, model } = options;
+  const { imageDataUrl, doc, apiKey, baseUrl, model, ocrText } = options;
+
+  // OCR / typed word wins over "nodes already exist" so spelling RAG still builds.
+  const fromOcr = resolveFromText(ocrText || "", doc);
+  if (fromOcr) return fromOcr;
 
   if (apiKey) {
     const vision = await callVision({
@@ -34,7 +39,23 @@ export async function readSketchImage(options: {
     if (vision) return vision;
   }
 
-  return offlineRead(doc);
+  return offlineRead(doc, ocrText);
+}
+
+function resolveFromText(text: string, doc: SketchDoc): VisionRead | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const pattern = detectPatternWord(trimmed);
+  if (!pattern) return null;
+  const short = trimmed.length <= 12;
+  const canned = docForPattern(pattern, short ? doc.intent : doc.intent || trimmed);
+  return {
+    text: trimmed,
+    pattern,
+    intent: canned.intent,
+    doc: canned,
+    source: "ocr",
+  };
 }
 
 async function callVision(args: {
@@ -59,14 +80,14 @@ async function callVision(args: {
           {
             role: "system",
             content:
-              "You read SketchCoder board screenshots. Users often handwrite a short word like RAG, CRUD, AGENT, WEBHOOK, API, or CHAT. They may also draw architecture boxes and arrows. Return ONLY JSON: { \"text\": string, \"pattern\": \"rag\"|\"crud\"|\"agent\"|\"webhook\"|\"chat\"|\"api\"|null, \"intent\": string, \"useCanned\": boolean, \"nodes\": [{ \"id\": string, \"type\": \"client\"|\"api\"|\"service\"|\"store\"|\"model\"|\"queue\"|\"external\", \"label\": string, \"x\": number, \"y\": number, \"w\": number, \"h\": number, \"shape\": \"rect\"|\"rounded\"|\"diamond\" }], \"edges\": [{ \"id\": string, \"from\": string, \"to\": string, \"label\"?: string }] }. If they wrote a known pattern word, set useCanned true and pattern accordingly; nodes/edges can be empty. Coordinates are roughly 0-1100 x 0-500.",
+              "You read SketchCoder board screenshots. Users often handwrite a short word like RAG, CRUD, AGENT, WEBHOOK, API, or CHAT. They may also draw architecture boxes and arrows. Return ONLY JSON: { \"text\": string, \"pattern\": \"rag\"|\"crud\"|\"agent\"|\"webhook\"|\"chat\"|\"api\"|null, \"intent\": string, \"useCanned\": boolean, \"nodes\": [{ \"id\": string, \"type\": \"client\"|\"api\"|\"service\"|\"store\"|\"model\"|\"queue\"|\"external\", \"label\": string, \"x\": number, \"y\": number, \"w\": number, \"h\": number, \"shape\": \"rect\"|\"rounded\"|\"diamond\" }], \"edges\": [{ \"id\": string, \"from\": string, \"to\": string, \"label\"?: string }] }. Set useCanned true ONLY when they clearly wrote a known pattern word (not when they drew a custom diagram). Prefer the drawn diagram nodes when boxes and arrows are present and no clear pattern word is written. Coordinates roughly 0-1200 x 0-700.",
           },
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: `Existing intent field: ${JSON.stringify(args.doc.intent)}\nExisting node count: ${args.doc.nodes.length}\nRead the board image. Prefer handwritten words.`,
+                text: `Existing intent field: ${JSON.stringify(args.doc.intent)}\nExisting node count: ${args.doc.nodes.length}\nRead the board image. Prefer handwritten words when present.`,
               },
               {
                 type: "image_url",
@@ -98,7 +119,9 @@ async function callVision(args: {
       detectPatternWord(parsed.intent || "") ||
       detectPatternWord(args.doc.intent);
 
-    if (pattern && (parsed.useCanned !== false || !parsed.nodes?.length)) {
+    // Only expand to canned when vision explicitly asked for it, or there is a
+    // pattern word and no usable diagram nodes.
+    if (pattern && (parsed.useCanned === true || !parsed.nodes?.length)) {
       const hint =
         (parsed.intent && parsed.intent.trim().length > 12
           ? parsed.intent
@@ -117,18 +140,34 @@ async function callVision(args: {
     }
 
     if (parsed.nodes?.length) {
-      return {
-        text: text || "diagram",
-        pattern,
-        intent: parsed.intent || args.doc.intent || text,
-        doc: {
-          version: 1,
+      const nodes = parsed.nodes.filter(
+        (n) =>
+          n &&
+          typeof n.id === "string" &&
+          typeof n.label === "string" &&
+          Number.isFinite(n.x) &&
+          Number.isFinite(n.y) &&
+          Number.isFinite(n.w) &&
+          Number.isFinite(n.h)
+      );
+      if (nodes.length) {
+        const ids = new Set(nodes.map((n) => n.id));
+        const edges = (parsed.edges || []).filter(
+          (e) => e && ids.has(e.from) && ids.has(e.to)
+        );
+        return {
+          text: text || "diagram",
+          pattern,
           intent: parsed.intent || args.doc.intent || text,
-          nodes: parsed.nodes,
-          edges: parsed.edges || [],
-        },
-        source: "vision",
-      };
+          doc: {
+            version: 1,
+            intent: parsed.intent || args.doc.intent || text,
+            nodes,
+            edges,
+          },
+          source: "vision",
+        };
+      }
     }
 
     if (pattern) {
@@ -154,9 +193,12 @@ async function callVision(args: {
   }
 }
 
-function offlineRead(doc: SketchDoc): VisionRead {
+function offlineRead(doc: SketchDoc, ocrText?: string): VisionRead {
+  const fromOcr = resolveFromText(ocrText || "", doc);
+  if (fromOcr) return fromOcr;
+
   const fromIntent = detectPatternWord(doc.intent);
-  if (fromIntent) {
+  if (fromIntent && doc.nodes.length < 2) {
     const canned = docForPattern(fromIntent, doc.intent);
     return {
       text: fromIntent.toUpperCase(),
@@ -167,13 +209,28 @@ function offlineRead(doc: SketchDoc): VisionRead {
     };
   }
 
+  // Keep the user's drawn graph when they sketched boxes.
   if (doc.nodes.length) {
+    const labelBlob = doc.nodes.map((n) => n.label).join(" ");
     return {
-      text: doc.nodes.map((n) => n.label).join(" "),
-      pattern: detectPatternWord(doc.intent) || detectPatternWord(doc.nodes.map((n) => n.label).join(" ")),
+      text: labelBlob,
+      pattern:
+        detectPatternWord(doc.intent) ||
+        detectPatternWord(labelBlob),
       intent: doc.intent,
       doc,
       source: "graph",
+    };
+  }
+
+  if (fromIntent) {
+    const canned = docForPattern(fromIntent, doc.intent);
+    return {
+      text: fromIntent.toUpperCase(),
+      pattern: fromIntent,
+      intent: canned.intent,
+      doc: canned,
+      source: "offline",
     };
   }
 

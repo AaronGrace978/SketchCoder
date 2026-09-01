@@ -85,6 +85,7 @@ type Store = {
   updateEdge: (id: string, patch: Partial<SketchEdge>) => void;
   removeSelected: () => void;
   loadDoc: (doc: SketchDoc, opts?: { clearInk?: boolean }) => void;
+  applyGeneratedGraph: (doc: SketchDoc) => void;
   exportDoc: () => SketchDoc;
   setInk: (ink: InkStroke | null) => void;
   commitStroke: (stroke: InkStroke) => void;
@@ -246,6 +247,22 @@ export const useSketch = create<Store>((set, get) => ({
       strokes: opts?.clearInk === false ? get().strokes : [],
       ink: null,
       fadingInk: [],
+    });
+    get().persist();
+  },
+  applyGeneratedGraph: (doc) => {
+    // Keep undo history so Generate does not permanently wipe a sketch.
+    get().pushHistory();
+    set({
+      nodes: doc.nodes,
+      edges: doc.edges,
+      intent: doc.intent || get().intent,
+      selectedNodeId: null,
+      selectedEdgeId: null,
+      strokes: [],
+      ink: null,
+      fadingInk: [],
+      editingNodeId: null,
     });
     get().persist();
   },

@@ -30,7 +30,6 @@ export async function runGenerate() {
     readText: "",
   });
 
-  // Let the capture flash paint.
   await wait(80);
 
   const imageDataUrl = captureBoardPng({
@@ -45,10 +44,8 @@ export async function runGenerate() {
   store.patchGeneration({ phase: "reading" });
 
   const ocrText = await readInkText(store.strokes).catch(() => "");
-  const localHint =
-    ocrText ||
-    detectPatternWord(store.intent)?.toUpperCase() ||
-    "";
+  const intentHint = detectPatternWord(store.intent)?.toUpperCase() || "";
+  const localHint = ocrText || intentHint;
 
   try {
     const res = await fetch("/api/generate", {
@@ -57,7 +54,7 @@ export async function runGenerate() {
       body: JSON.stringify({
         doc: store.exportDoc(),
         imageDataUrl,
-        ocrText: localHint || ocrText,
+        ocrText: localHint,
       }),
     });
     if (!res.ok || !res.body) throw new Error("Generate failed");
@@ -73,8 +70,12 @@ export async function runGenerate() {
       for (const chunk of chunks) {
         const line = chunk.trim();
         if (!line.startsWith("data:")) continue;
-        const event = JSON.parse(line.slice(5).trim()) as GenerateEvent;
-        applyEvent(event);
+        try {
+          const event = JSON.parse(line.slice(5).trim()) as GenerateEvent;
+          applyEvent(event);
+        } catch {
+          /* skip bad SSE chunk */
+        }
       }
     }
   } catch (err) {
@@ -102,7 +103,8 @@ function applyEvent(event: GenerateEvent) {
     });
   }
   if (event.type === "graph") {
-    s.loadDoc(event.doc, { clearInk: true });
+    // Snapshot first so Ctrl+Z can restore the pre-generate sketch.
+    s.applyGeneratedGraph(event.doc);
   }
   if (event.type === "plan") {
     s.patchGeneration({
@@ -119,16 +121,15 @@ function applyEvent(event: GenerateEvent) {
     s.upsertFile({ path: event.path, content: event.content });
   }
   if (event.type === "done") {
+    const failed = event.summary.toLowerCase().includes("could not read");
     s.patchGeneration({
-      status: event.summary.toLowerCase().includes("could not read") ? "error" : "done",
+      status: failed ? "error" : "done",
       phase: "idle",
       summary: event.summary,
       nextSteps: event.nextSteps,
       pattern: event.pattern,
       pulsingNodeId: null,
-      error: event.summary.toLowerCase().includes("could not read")
-        ? event.summary
-        : null,
+      error: failed ? event.summary : null,
     });
   }
 }
@@ -140,10 +141,7 @@ async function readInkText(
   const inkPng = captureInkOcrPng(strokes);
   if (!inkPng) return "";
 
-  // Lightweight offline guess from stroke clusters before OCR.
-  const clusterGuess = guessWordFromStrokeClusters(strokes);
-  if (clusterGuess) return clusterGuess;
-
+  // Prefer real OCR. Cluster guess is only a weak fallback.
   try {
     const { createWorker } = await import("tesseract.js");
     const worker = await createWorker("eng");
@@ -152,17 +150,21 @@ async function readInkText(
     });
     const result = await worker.recognize(inkPng);
     await worker.terminate();
-    return (result.data.text || "").trim();
+    const text = (result.data.text || "").trim();
+    if (text && detectPatternWord(text)) return text;
+    if (text.length >= 2) return text;
   } catch {
-    return "";
+    /* fall through */
   }
+
+  return guessWordFromStrokeClusters(strokes);
 }
 
-/** When someone scribbles a short word, stroke groups often map 1:1 to letters. */
+/** Weak fallback only when OCR fails — never short-circuit real reading. */
 function guessWordFromStrokeClusters(
   strokes: { points: { x: number; y: number }[] }[]
 ): string {
-  if (strokes.length < 2 || strokes.length > 8) return "";
+  if (strokes.length < 2 || strokes.length > 10) return "";
   const boxes = strokes.map((s) => {
     let minX = Infinity;
     let maxX = -Infinity;
@@ -174,11 +176,10 @@ function guessWordFromStrokeClusters(
       minY = Math.min(minY, p.y);
       maxY = Math.max(maxY, p.y);
     }
-    return { minX, maxX, minY, maxY, cx: (minX + maxX) / 2 };
+    return { minX, maxX, minY, maxY, cx: (minX + maxX) / 2, w: maxX - minX, h: maxY - minY };
   });
   boxes.sort((a, b) => a.cx - b.cx);
 
-  // Merge overlapping letter strokes (e.g. A made of 2-3 strokes).
   const letters: typeof boxes = [];
   for (const b of boxes) {
     const prev = letters[letters.length - 1];
@@ -188,19 +189,27 @@ function guessWordFromStrokeClusters(
       prev.minY = Math.min(prev.minY, b.minY);
       prev.maxY = Math.max(prev.maxY, b.maxY);
       prev.cx = (prev.minX + prev.maxX) / 2;
+      prev.w = prev.maxX - prev.minX;
+      prev.h = prev.maxY - prev.minY;
     } else {
       letters.push({ ...b });
     }
   }
 
-  // Heuristic: 3 letter-ish clusters → treat as RAG (the flagship spell).
-  if (letters.length === 3) {
-    const heights = letters.map((l) => l.maxY - l.minY);
-    const avgH = heights.reduce((a, b) => a + b, 0) / heights.length;
-    if (heights.every((h) => h > avgH * 0.45)) return "RAG";
-  }
+  // Require letter-like tall clusters sitting in a horizontal word row.
+  if (letters.length < 3 || letters.length > 7) return "";
+  const avgH = letters.reduce((a, l) => a + l.h, 0) / letters.length;
+  const avgW = letters.reduce((a, l) => a + l.w, 0) / letters.length;
+  const wordLike =
+    letters.every((l) => l.h > avgH * 0.4 && l.h > l.w * 0.55) &&
+    avgH > 28 &&
+    avgW < avgH * 1.6;
+  if (!wordLike) return "";
+
+  if (letters.length === 3) return "RAG";
   if (letters.length === 4) return "CRUD";
   if (letters.length === 5) return "AGENT";
+  if (letters.length === 7) return "WEBHOOK";
   return "";
 }
 

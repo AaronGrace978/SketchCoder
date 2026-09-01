@@ -10,47 +10,41 @@ export type PatternWord =
   | "api";
 
 const WORD_ALIASES: Array<{ pattern: PatternWord; words: string[] }> = [
-  {
-    pattern: "rag",
-    words: ["rag", "retrieval", "citations", "vector", "retriever"],
-  },
-  {
-    pattern: "crud",
-    words: ["crud", "rest", "resource", "admin"],
-  },
-  {
-    pattern: "agent",
-    words: ["agent", "tools", "orchestrator"],
-  },
-  {
-    pattern: "webhook",
-    words: ["webhook", "worker", "queue", "jobs"],
-  },
-  {
-    pattern: "chat",
-    words: ["chat", "assistant"],
-  },
-  {
-    pattern: "api",
-    words: ["api", "backend", "server"],
-  },
+  { pattern: "rag", words: ["rag", "retrieval", "citations"] },
+  { pattern: "crud", words: ["crud"] },
+  { pattern: "agent", words: ["agent", "orchestrator"] },
+  { pattern: "webhook", words: ["webhook", "worker"] },
+  { pattern: "chat", words: ["chat", "assistant"] },
+  { pattern: "api", words: ["api"] },
 ];
 
 export function detectPatternWord(text: string): PatternWord | null {
-  const raw = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+  const raw = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim();
+  if (!raw) return null;
   const compact = raw.replace(/\s+/g, "");
+  const letters = compact;
+
+  // Exact compact matches first (handwriting / OCR).
+  if (letters === "rag" || letters === "rrag") return "rag";
+  if (letters === "crud") return "crud";
+  if (letters === "agent" || letters === "agents") return "agent";
+  if (letters === "webhook" || letters === "webhooks") return "webhook";
+  if (letters === "chat") return "chat";
+  if (letters === "api") return "api";
+
   for (const entry of WORD_ALIASES) {
     for (const word of entry.words) {
-      if (compact === word || compact.includes(word) || new RegExp(`\\b${word}\\b`).test(raw)) {
-        return entry.pattern;
-      }
+      if (compact === word) return entry.pattern;
+      if (new RegExp(`\\b${word}\\b`).test(raw)) return entry.pattern;
     }
   }
-  // Handwriting OCR often returns spaced letters: "R A G"
-  const letters = raw.replace(/\s+/g, "");
-  if (letters === "rag") return "rag";
-  if (letters === "crud") return "crud";
-  if (letters === "api") return "api";
+
+  // Soft aliases only as whole words in longer intent strings.
+  if (/\bcitations?\b|\bvector\s*store\b|\bretriev/i.test(raw)) return "rag";
+  if (/\brest\s*api\b|\bresource\b|\badmin\b/i.test(raw)) return "crud";
+  if (/\bqueue\b|\bjobs?\b|\bingest\b/i.test(raw)) return "webhook";
+  if (/\btools?\b|\borchestr/i.test(raw)) return "agent";
+
   return null;
 }
 
@@ -59,9 +53,7 @@ export function docForPattern(pattern: PatternWord, intentHint = ""): SketchDoc 
     case "rag":
       return {
         ...ragDemoDoc(),
-        intent:
-          intentHint ||
-          ragDemoDoc().intent,
+        intent: intentHint?.trim() || ragDemoDoc().intent,
       };
     case "crud":
       return crudDemoDoc(intentHint);
@@ -71,7 +63,7 @@ export function docForPattern(pattern: PatternWord, intentHint = ""): SketchDoc 
     case "webhook":
       return webhookDemoDoc(intentHint);
     case "api":
-      return crudDemoDoc(intentHint || "REST API with CRUD resources");
+      return crudDemoDoc(intentHint || "REST API for notes with list create update delete");
     default:
       return ragDemoDoc();
   }
@@ -80,7 +72,7 @@ export function docForPattern(pattern: PatternWord, intentHint = ""): SketchDoc 
 export function crudDemoDoc(intent = "CRUD API for notes with list create update delete"): SketchDoc {
   return {
     version: 1,
-    intent,
+    intent: intent.trim() || "CRUD API for notes with list create update delete",
     nodes: [
       {
         id: "n_client",
@@ -125,7 +117,7 @@ export function agentDemoDoc(
 ): SketchDoc {
   return {
     version: 1,
-    intent,
+    intent: intent.trim() || "Chat agent with tools for search and memory",
     nodes: [
       {
         id: "n_ui",
@@ -192,7 +184,7 @@ export function webhookDemoDoc(
 ): SketchDoc {
   return {
     version: 1,
-    intent,
+    intent: intent.trim() || "Webhook worker that enqueues provider events",
     nodes: [
       {
         id: "n_ext",

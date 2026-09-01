@@ -231,15 +231,22 @@ export function SketchCanvas({
 
     const start = points[0];
     const end = points[points.length - 1];
-    const a = nearestNode(s.nodes, start, 36);
-    const b = nearestNode(s.nodes, end, 36);
+    const a = nearestNode(s.nodes, start, 28);
+    const b = nearestNode(s.nodes, end, 28);
     const box = bbox(points);
     const aspect = box.w / Math.max(8, box.h);
-    const skinny = aspect > 3.2 || aspect < 0.28;
+    const skinny = aspect > 4.5 || aspect < 0.22;
+    // Handwriting is usually short-ish strokes; don't steal letter ink as edges.
+    const looksLikeConnector =
+      skinny && len > 120 && box.w > 140 && Math.min(box.w, box.h) < 36;
 
-    // Pen between two boxes = edge. Everything else stays as handwriting ink
-    // so spelling RAG (or drawing freehand) survives for the screenshot pass.
-    if (a && b && a.id !== b.id && (skinny || len > 90) && s.nodes.length >= 2) {
+    if (
+      a &&
+      b &&
+      a.id !== b.id &&
+      looksLikeConnector &&
+      s.nodes.length >= 2
+    ) {
       s.commitInkFade({ ...stroke, fading: true });
       window.setTimeout(() => s.clearFadedInk(stroke.id), 420);
       s.addEdge(a.id, b.id);
@@ -247,6 +254,26 @@ export function SketchCanvas({
     }
 
     s.commitStroke({ ...stroke, fading: false });
+  }
+
+  function onPointerCancel(e: React.PointerEvent<HTMLDivElement>) {
+    const d = drag.current;
+    drag.current = null;
+    setDraft(null);
+    if (!d || readOnly) return;
+    if (d.mode === "ink") {
+      const stroke = useSketch.getState().ink;
+      if (stroke && stroke.points.length > 2) {
+        useSketch.getState().commitStroke({ ...stroke, fading: false });
+      } else {
+        useSketch.getState().setInk(null);
+      }
+    }
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
   }
 
   const cursor = readOnly
@@ -265,6 +292,7 @@ export function SketchCanvas({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
     >
       <div
         className="dot-grid absolute inset-0 origin-top-left"
