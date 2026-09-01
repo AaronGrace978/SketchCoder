@@ -1,4 +1,5 @@
 import type { SketchDoc } from "@sketchcoder/graph";
+import { fuzzyDetectPatternWord } from "@sketchcoder/graph";
 import type { PatternKind, PatternMatch } from "./types";
 import { nodeByType } from "./types";
 
@@ -12,11 +13,22 @@ export function matchPattern(doc: SketchDoc): PatternMatch {
   ];
   scores.sort((a, b) => b.score - a.score);
   const top = scores[0];
-  // Require a clear lead over generic unless intent strongly matches.
-  if (top.kind !== "generic" && top.score < 6) {
-    return scoreGeneric(doc);
+  const second = scores[1]?.score ?? 0;
+
+  // Clear winner, or strong absolute score.
+  if (top.kind !== "generic" && (top.score >= 5 || top.score - second >= 2)) {
+    return top;
   }
-  return top;
+  if (top.kind !== "generic" && top.score >= 4) return top;
+  return scoreGeneric(doc);
+}
+
+function labelBlob(doc: SketchDoc): string {
+  return [
+    doc.intent,
+    ...doc.nodes.map((n) => `${n.type} ${n.label}`),
+    ...doc.edges.map((e) => e.label || ""),
+  ].join(" ");
 }
 
 function scoreRag(doc: SketchDoc): PatternMatch {
@@ -25,6 +37,7 @@ function scoreRag(doc: SketchDoc): PatternMatch {
   const api = nodeByType(doc, "api")[0];
   const client = nodeByType(doc, "client")[0];
   const services = nodeByType(doc, "service");
+  const blob = labelBlob(doc);
   const embed =
     services.find((s) => /embed|chunk|index/i.test(s.label)) ?? services[0];
   const retriever =
@@ -41,8 +54,9 @@ function scoreRag(doc: SketchDoc): PatternMatch {
   else if (services.length) score += 1;
   if (api) score += 1;
   if (client) score += 1;
-  if (/rag|citation|retriev|vector/i.test(doc.intent)) score += 5;
-  if (/vector|retriev|embed/i.test(doc.nodes.map((n) => n.label).join(" "))) score += 2;
+  if (/rag|citation|retriev|vector|grounded|embed/i.test(blob)) score += 5;
+  if (fuzzyDetectPatternWord(doc.intent) === "rag") score += 4;
+  if (store && model && (embed || retriever)) score += 2;
   return {
     kind: "rag",
     score,
@@ -63,6 +77,7 @@ function scoreCrud(doc: SketchDoc): PatternMatch {
   const api = nodeByType(doc, "api")[0];
   const client = nodeByType(doc, "client")[0];
   const model = nodeByType(doc, "model")[0];
+  const blob = labelBlob(doc);
   let score = 0;
   if (store && api) score += 5;
   else {
@@ -70,10 +85,16 @@ function scoreCrud(doc: SketchDoc): PatternMatch {
     if (api) score += 2;
   }
   if (client) score += 2;
+  // Classic Client → API → Store topology.
+  if (client && api && store && doc.edges.length >= 2) score += 3;
   if (!model) score += 1;
-  if (/crud|rest api|resource|admin/i.test(doc.intent)) score += 5;
+  if (/crud|rest api|resource|admin|notes|todo/i.test(blob)) score += 5;
+  if (fuzzyDetectPatternWord(doc.intent) === "crud" || fuzzyDetectPatternWord(doc.intent) === "api") {
+    score += 4;
+  }
   if (model) score -= 3;
   if (nodeByType(doc, "queue").length) score -= 2;
+  if (/rag|retriev|vector|citation/i.test(blob)) score -= 4;
   return {
     kind: "crud",
     score,
@@ -88,12 +109,22 @@ function scoreAgent(doc: SketchDoc): PatternMatch {
     ...nodeByType(doc, "external"),
     ...nodeByType(doc, "service"),
   ];
+  const blob = labelBlob(doc);
   let score = 0;
   if (model) score += 3;
   if (tools.length >= 1 && model) score += 3;
   if (client) score += 1;
-  if (/agent|tool|chat|orchestr/i.test(doc.intent)) score += 5;
+  if (/agent|tool|chat|orchestr|assistant/i.test(blob)) score += 5;
+  if (
+    fuzzyDetectPatternWord(doc.intent) === "agent" ||
+    fuzzyDetectPatternWord(doc.intent) === "chat"
+  ) {
+    score += 4;
+  }
   if (!model) score -= 2;
+  if (/rag|retriev|vector|citation/i.test(blob) && nodeByType(doc, "store").length) {
+    score -= 3;
+  }
   return {
     kind: "agent",
     score,
@@ -110,11 +141,13 @@ function scoreWebhook(doc: SketchDoc): PatternMatch {
   const queue = nodeByType(doc, "queue")[0];
   const external = nodeByType(doc, "external")[0];
   const api = nodeByType(doc, "api")[0];
+  const blob = labelBlob(doc);
   let score = 0;
   if (queue) score += 5;
   if (external) score += 2;
   if (api) score += 1;
-  if (/webhook|worker|ingest|queue|job/i.test(doc.intent)) score += 5;
+  if (/webhook|worker|ingest|queue|job/i.test(blob)) score += 5;
+  if (fuzzyDetectPatternWord(doc.intent) === "webhook") score += 4;
   if (!queue) score -= 2;
   return {
     kind: "webhook",

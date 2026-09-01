@@ -1,4 +1,9 @@
-import { topologicalOrder, type SketchDoc } from "@sketchcoder/graph";
+import {
+  fuzzyDetectPatternWord,
+  normalizeSketchDoc,
+  type SketchDoc,
+  topologicalOrder,
+} from "@sketchcoder/graph";
 import { scaffoldFromGraph, type ScaffoldResult } from "@sketchcoder/templates";
 import { adaptPrompt } from "./prompt";
 import { parseModelJson } from "./parse";
@@ -25,25 +30,29 @@ export async function* generateScaffold(
   doc: SketchDoc,
   options: GenerateOptions = {}
 ): AsyncGenerator<GenerateEvent> {
-  let working = doc;
+  let working = normalizeSketchDoc(doc);
 
   if (options.imageDataUrl || options.ocrText) {
     yield { type: "capture" };
 
-    // Prefer OCR / pattern text first so spelling still works with boxes present.
-    let read = await readSketchImage({
-      imageDataUrl: options.imageDataUrl || "",
-      doc,
-      apiKey: options.apiKey,
-      baseUrl: options.baseUrl,
-      model: options.model,
-      ocrText: options.ocrText,
-    });
+    let read = await withTimeout(
+      readSketchImage({
+        imageDataUrl: options.imageDataUrl || "",
+        doc: working,
+        apiKey: options.apiKey,
+        baseUrl: options.baseUrl,
+        model: options.model,
+        ocrText: options.ocrText,
+      }),
+      18000,
+      null
+    );
 
-    if ((!read.doc || read.source === "graph") && options.ocrText) {
-      const { detectPatternWord, docForPattern } = await import("@sketchcoder/graph");
+    if ((!read?.doc || read.source === "graph") && options.ocrText) {
+      const { docForPattern } = await import("@sketchcoder/graph");
       const pattern =
-        detectPatternWord(options.ocrText) || detectPatternWord(doc.intent);
+        fuzzyDetectPatternWord(options.ocrText) ||
+        fuzzyDetectPatternWord(doc.intent);
       if (pattern) {
         const short = options.ocrText.trim().length <= 12;
         const canned = docForPattern(
@@ -68,16 +77,15 @@ export async function* generateScaffold(
         source: read.source,
       };
       if (read.doc) {
-        // Only replace the board when we expanded a word/demo or vision rebuilt it.
         const shouldReplace =
           read.source === "ocr" ||
           read.source === "vision" ||
           read.source === "offline" ||
           (read.source === "graph" && read.doc !== doc);
-        working = {
+        working = normalizeSketchDoc({
           ...read.doc,
           intent: read.intent || read.doc.intent || doc.intent,
-        };
+        });
         if (shouldReplace && graphsDiffer(doc, working)) {
           yield { type: "graph", doc: working };
         }
@@ -85,14 +93,32 @@ export async function* generateScaffold(
     }
   }
 
-  // Empty board but intent names a pattern → expand.
+  // Empty board but intent/OCR names a pattern → expand.
   if (!working.nodes.length) {
-    const { detectPatternWord, docForPattern } = await import("@sketchcoder/graph");
+    const { docForPattern } = await import("@sketchcoder/graph");
     const pattern =
-      detectPatternWord(options.ocrText || "") ||
-      detectPatternWord(working.intent);
+      fuzzyDetectPatternWord(options.ocrText || "") ||
+      fuzzyDetectPatternWord(working.intent);
     if (pattern) {
-      working = docForPattern(pattern, working.intent);
+      working = normalizeSketchDoc(docForPattern(pattern, working.intent));
+      yield {
+        type: "read",
+        text: pattern.toUpperCase(),
+        pattern,
+        source: "offline",
+      };
+      yield { type: "graph", doc: working };
+    }
+  }
+
+  // Intent says RAG/CRUD/… but board is sparse scribble → expand canned graph.
+  if (working.nodes.length > 0 && working.nodes.length < 3) {
+    const { docForPattern } = await import("@sketchcoder/graph");
+    const pattern =
+      fuzzyDetectPatternWord(options.ocrText || "") ||
+      fuzzyDetectPatternWord(working.intent);
+    if (pattern) {
+      working = normalizeSketchDoc(docForPattern(pattern, working.intent));
       yield {
         type: "read",
         text: pattern.toUpperCase(),
@@ -107,19 +133,19 @@ export async function* generateScaffold(
     yield {
       type: "done",
       summary:
-        "Could not read a system from the board. Spell a word like RAG, or sketch boxes, then Generate again.",
+        "Could not read a system from the board. Spell a word like RAG, load the RAG demo, or sketch Client → API → Store.",
       nextSteps: [
-        "Use the pen and write RAG across the board.",
-        "Or load the RAG demo and hit Generate.",
-        "Add a model API key in Settings for vision reading of handwriting.",
+        "Use Clear board, then write RAG with the pen.",
+        "Or click Load RAG demo and hit Generate.",
+        "Add a model key in Settings for handwriting vision.",
       ],
       pattern: "generic",
     };
     return;
   }
 
+  working = normalizeSketchDoc(working);
   const base = scaffoldFromGraph(working);
-  // Keep templates authoritative; optional LLM adapt only fills labels safely.
   const adapted = options.apiKey
     ? await maybeAdapt(working, base, options)
     : base;
@@ -189,11 +215,12 @@ async function maybeAdapt(
           {
             role: "system",
             content:
-              "You output JSON only. Keep every original file path. Only refine content; do not drop core files.",
+              "You output JSON only. Keep every original file path. Only refine content to match the sketched labels and intent; do not drop core files.",
           },
           { role: "user", content: adaptPrompt(doc, base) },
         ],
       }),
+      signal: AbortSignal.timeout(25000),
     });
     if (!res.ok) return base;
     const json = (await res.json()) as {
@@ -202,7 +229,6 @@ async function maybeAdapt(
     const parsed = parseModelJson(json.choices?.[0]?.message?.content ?? "");
     if (!parsed?.files?.length) return base;
 
-    // Merge adapted content onto base paths only — never lose scaffolding.
     const byPath = new Map(base.files.map((f) => [f.path, f.content]));
     for (const f of parsed.files) {
       if (byPath.has(f.path) && typeof f.content === "string" && f.content.length > 20) {
@@ -218,4 +244,23 @@ async function maybeAdapt(
   } catch {
     return base;
   }
+}
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  fallback: T
+): Promise<T> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(fallback), ms);
+    promise
+      .then((v) => {
+        clearTimeout(t);
+        resolve(v);
+      })
+      .catch(() => {
+        clearTimeout(t);
+        resolve(fallback);
+      });
+  });
 }

@@ -2,7 +2,7 @@
 
 import { parseDoc, serializeDoc } from "@sketchcoder/graph";
 import { downloadJson, downloadZip } from "@/lib/export";
-import { runGenerate } from "@/lib/generate";
+import { cancelGenerate, runGenerate } from "@/lib/generate";
 import { highlightCode, treeFromPaths, type TreeNode } from "@/lib/highlight";
 import { useSketch } from "@/lib/store";
 
@@ -25,22 +25,24 @@ export function Rail() {
           className="mt-2 w-full resize-none bg-transparent text-[15px] leading-snug text-bone outline-none placeholder:text-muted/70"
         />
         <button
-          onClick={() => runGenerate()}
-          disabled={generation.status === "running"}
-          className="mt-3 w-full bg-brass py-2.5 font-mono text-[11px] uppercase tracking-[0.18em] text-ink disabled:opacity-50"
+          onClick={() =>
+            generation.status === "running" ? cancelGenerate() : runGenerate()
+          }
+          className="mt-3 w-full bg-brass py-2.5 font-mono text-[11px] uppercase tracking-[0.18em] text-ink"
         >
           {generation.status === "running"
             ? generation.phase === "capturing"
-              ? "Capturing…"
+              ? "Cancel capture…"
               : generation.phase === "reading"
-                ? "Reading…"
-                : "Writing…"
+                ? "Cancel reading…"
+                : "Cancel writing…"
             : "Generate"}
         </button>
         <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted">
           Pen-write RAG / CRUD / AGENT, or draw typed boxes + arrows. Generate
-          screenshots the board and builds a runnable zip. Ctrl+Z undoes a replace.
-          Vision: open <span className="text-bone">Settings</span> and add your Ollama Cloud or OpenAI key.
+          screenshots the board and builds a runnable zip. Use{" "}
+          <span className="text-bone">Clear board</span> to wipe a demo. Ctrl+Z undoes.
+          Vision: open <span className="text-bone">Settings</span> for Ollama Cloud or OpenAI.
         </p>
       </div>
 

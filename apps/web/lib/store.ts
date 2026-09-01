@@ -90,6 +90,7 @@ type Store = {
   setInk: (ink: InkStroke | null) => void;
   commitStroke: (stroke: InkStroke) => void;
   clearStrokes: () => void;
+  clearBoard: () => void;
   commitInkFade: (stroke: InkStroke) => void;
   clearFadedInk: (id: string) => void;
   pushHistory: () => void;
@@ -283,6 +284,22 @@ export const useSketch = create<Store>((set, get) => ({
   },
   clearStrokes: () => {
     set({ strokes: [], ink: null, fadingInk: [] });
+    get().persist();
+  },
+  clearBoard: () => {
+    get().pushHistory();
+    set({
+      nodes: [],
+      edges: [],
+      intent: "",
+      strokes: [],
+      ink: null,
+      fadingInk: [],
+      selectedNodeId: null,
+      selectedEdgeId: null,
+      editingNodeId: null,
+      generation: idleGeneration(),
+    });
     get().persist();
   },
   commitInkFade: (stroke) =>

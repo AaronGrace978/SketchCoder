@@ -1,4 +1,5 @@
 import type { SketchDoc } from "@sketchcoder/graph";
+import { normalizeSketchDoc } from "@sketchcoder/graph";
 import type { ScaffoldResult } from "./types";
 import { matchPattern } from "./match";
 import { buildRag } from "./rag";
@@ -8,18 +9,19 @@ import { buildWebhook } from "./webhook";
 import { buildGeneric } from "./generic";
 
 export function scaffoldFromGraph(doc: SketchDoc): ScaffoldResult {
-  const match = matchPattern(doc);
+  const normalized = normalizeSketchDoc(doc);
+  const match = matchPattern(normalized);
   switch (match.kind) {
     case "rag":
-      return buildRag(doc, match);
+      return buildRag(normalized, match);
     case "crud":
-      return buildCrud(doc, match);
+      return buildCrud(normalized, match);
     case "agent":
-      return buildAgent(doc, match);
+      return buildAgent(normalized, match);
     case "webhook":
-      return buildWebhook(doc, match);
+      return buildWebhook(normalized, match);
     default:
-      return buildGeneric(doc, match);
+      return buildGeneric(normalized, match);
   }
 }
 

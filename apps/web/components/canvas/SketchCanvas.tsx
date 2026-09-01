@@ -401,7 +401,7 @@ export function SketchCanvas({
       </svg>
       <LabelEditor />
       {generating ? (
-        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-ink/55">
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-ink/55">
           <div className="border border-line bg-graphite px-8 py-5 text-center">
             <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-brass">
               {phase === "capturing"
@@ -416,9 +416,18 @@ export function SketchCanvas({
                 : phase === "reading"
                   ? readText
                     ? `Saw “${readText}”`
-                    : "Vision on the ink…"
+                    : "Figuring out what to build…"
                   : "Files streaming in"}
             </p>
+            <button
+              type="button"
+              className="pointer-events-auto mt-4 font-mono text-[11px] uppercase tracking-[0.16em] text-muted hover:text-bone"
+              onClick={() => {
+                void import("@/lib/generate").then((m) => m.cancelGenerate());
+              }}
+            >
+              Cancel
+            </button>
           </div>
         </div>
       ) : null}

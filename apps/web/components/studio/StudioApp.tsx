@@ -7,6 +7,7 @@ import { SketchCanvas } from "@/components/canvas/SketchCanvas";
 import { Rail } from "@/components/studio/Rail";
 import { SettingsPanel } from "@/components/studio/SettingsPanel";
 import { Toolbar } from "@/components/studio/Toolbar";
+import { cancelGenerate } from "@/lib/generate";
 import { useSketch, type Tool } from "@/lib/store";
 
 const KEY_TOOLS: Record<string, Tool> = {
@@ -62,6 +63,8 @@ export function StudioApp({ loadDemo }: { loadDemo?: boolean }) {
     };
   }, []);
 
+  const generating = useSketch((s) => s.generation.status === "running");
+
   return (
     <div className="relative flex h-screen w-screen overflow-hidden bg-ink">
       <div className="relative min-w-0 flex-1">
@@ -71,15 +74,43 @@ export function StudioApp({ loadDemo }: { loadDemo?: boolean }) {
           </Link>
           <div className="pointer-events-auto flex items-center gap-5">
             <SettingsPanel />
+            {generating ? (
+              <button
+                type="button"
+                className="font-mono text-[11px] uppercase tracking-[0.16em] text-brass hover:text-bone"
+                onClick={() => cancelGenerate()}
+              >
+                Cancel
+              </button>
+            ) : null}
             <button
+              type="button"
               className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted hover:text-bone"
-              onClick={() => useSketch.getState().clearStrokes()}
+              onClick={() => {
+                cancelGenerate();
+                useSketch.getState().clearStrokes();
+              }}
             >
               Clear ink
             </button>
             <button
+              type="button"
               className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted hover:text-bone"
-              onClick={() => useSketch.getState().loadDoc(ragDemoDoc())}
+              title="Clear boxes, ink, intent, and demo"
+              onClick={() => {
+                cancelGenerate();
+                useSketch.getState().clearBoard();
+              }}
+            >
+              Clear board
+            </button>
+            <button
+              type="button"
+              className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted hover:text-bone"
+              onClick={() => {
+                cancelGenerate();
+                useSketch.getState().loadDoc(ragDemoDoc());
+              }}
             >
               Load RAG demo
             </button>

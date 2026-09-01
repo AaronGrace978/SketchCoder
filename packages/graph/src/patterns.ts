@@ -25,12 +25,17 @@ export function detectPatternWord(text: string): PatternWord | null {
   const letters = compact;
 
   // Exact compact matches first (handwriting / OCR).
-  if (letters === "rag" || letters === "rrag") return "rag";
-  if (letters === "crud") return "crud";
-  if (letters === "agent" || letters === "agents") return "agent";
+  if (letters === "rag" || letters === "rrag" || letters === "ragpipeline") return "rag";
+  if (letters === "crud" || letters === "crudapi") return "crud";
+  if (letters === "agent" || letters === "agents" || letters === "aiagent") return "agent";
   if (letters === "webhook" || letters === "webhooks") return "webhook";
-  if (letters === "chat") return "chat";
-  if (letters === "api") return "api";
+  if (letters === "chat" || letters === "chatbot") return "chat";
+  if (letters === "api" || letters === "restapi") return "api";
+
+  // Spaced handwriting: "R A G", "C R U D"
+  const spaced = raw.replace(/\s+/g, "");
+  if (/^r\s*a\s*g$/i.test(raw) || spaced === "rag") return "rag";
+  if (/^c\s*r\s*u\s*d$/i.test(raw) || spaced === "crud") return "crud";
 
   for (const entry of WORD_ALIASES) {
     for (const word of entry.words) {
@@ -39,11 +44,20 @@ export function detectPatternWord(text: string): PatternWord | null {
     }
   }
 
-  // Soft aliases only as whole words in longer intent strings.
-  if (/\bcitations?\b|\bvector\s*store\b|\bretriev/i.test(raw)) return "rag";
-  if (/\brest\s*api\b|\bresource\b|\badmin\b/i.test(raw)) return "crud";
-  if (/\bqueue\b|\bjobs?\b|\bingest\b/i.test(raw)) return "webhook";
-  if (/\btools?\b|\borchestr/i.test(raw)) return "agent";
+  // Soft aliases only as whole words / phrases in longer intent strings.
+  if (
+    /\bcitations?\b|\bvector\s*store\b|\bretriev|\bgrounded\s*llm\b|\bembedder\b|\brag\b/i.test(
+      raw
+    )
+  ) {
+    return "rag";
+  }
+  if (/\brest\s*api\b|\bcrud\b|\bresource\b|\badmin\s*api\b/i.test(raw)) return "crud";
+  if (/\bwebhook\b|\bqueue\b|\bjobs?\b|\bingest\b|\bworker\b/i.test(raw)) return "webhook";
+  if (/\btools?\b|\borchestr|\bchat\s*agent\b|\breact\s*agent\b/i.test(raw)) return "agent";
+  if (/\bchat\s*ui\b|\bassistant\b/i.test(raw) && !/\brag\b|\bretriev/i.test(raw)) {
+    return "chat";
+  }
 
   return null;
 }

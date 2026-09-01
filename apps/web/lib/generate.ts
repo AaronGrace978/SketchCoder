@@ -1,8 +1,22 @@
 import type { GenerateEvent } from "@sketchcoder/agent";
-import { detectPatternWord } from "@sketchcoder/graph";
+import { fuzzyDetectPatternWord } from "@sketchcoder/graph";
 import { captureBoardPng, captureInkOcrPng } from "./screenshot";
 import { loadSettings, settingsForApi } from "./settings";
 import { useSketch } from "./store";
+
+let activeAbort: AbortController | null = null;
+
+export function cancelGenerate() {
+  activeAbort?.abort();
+  activeAbort = null;
+  useSketch.getState().patchGeneration({
+    status: "idle",
+    phase: "idle",
+    pulsingNodeId: null,
+    error: null,
+    summary: "Generate cancelled.",
+  });
+}
 
 export async function runGenerate() {
   const store = useSketch.getState();
@@ -18,6 +32,11 @@ export async function runGenerate() {
     return;
   }
 
+  // Cancel any stuck previous run.
+  activeAbort?.abort();
+  const abort = new AbortController();
+  activeAbort = abort;
+
   store.patchGeneration({
     status: "running",
     phase: "capturing",
@@ -31,22 +50,43 @@ export async function runGenerate() {
     readText: "",
   });
 
-  await wait(80);
+  await wait(40);
+  if (abort.signal.aborted) return;
 
-  const imageDataUrl = captureBoardPng({
-    nodes: store.nodes,
-    edges: store.edges,
-    strokes: store.strokes,
-    viewport: store.viewport,
-    width: store.boardSize.w,
-    height: store.boardSize.h,
-  });
+  let imageDataUrl = "";
+  try {
+    imageDataUrl = captureBoardPng({
+      nodes: store.nodes,
+      edges: store.edges,
+      strokes: store.strokes,
+      viewport: store.viewport,
+      width: store.boardSize.w,
+      height: store.boardSize.h,
+    });
+  } catch {
+    imageDataUrl = "";
+  }
 
   store.patchGeneration({ phase: "reading" });
 
-  const ocrText = await readInkText(store.strokes).catch(() => "");
-  const intentHint = detectPatternWord(store.intent)?.toUpperCase() || "";
-  const localHint = ocrText || intentHint;
+  // Intent alone is often enough — don't let OCR hang the whole Generate.
+  const intentPattern = fuzzyDetectPatternWord(store.intent);
+  const skipOcr =
+    Boolean(intentPattern) &&
+    (store.nodes.length >= 3 || store.strokes.length === 0);
+
+  const ocrText = skipOcr
+    ? ""
+    : await withTimeout(readInkText(store.strokes), 7000, "").catch(() => "");
+
+  if (abort.signal.aborted) return;
+
+  const ocrPattern = fuzzyDetectPatternWord(ocrText);
+  const localHint =
+    (ocrPattern && ocrText.trim()) ||
+    (intentPattern ? intentPattern.toUpperCase() : "") ||
+    ocrText.trim() ||
+    "";
 
   try {
     const modelSettings = settingsForApi(loadSettings());
@@ -59,12 +99,21 @@ export async function runGenerate() {
         ocrText: localHint,
         ...modelSettings,
       }),
+      signal: abort.signal,
     });
     if (!res.ok || !res.body) throw new Error("Generate failed");
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     while (true) {
+      if (abort.signal.aborted) {
+        try {
+          await reader.cancel();
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
@@ -82,18 +131,22 @@ export async function runGenerate() {
       }
     }
   } catch (err) {
+    if (abort.signal.aborted) return;
     useSketch.getState().patchGeneration({
       status: "error",
       phase: "idle",
       error: err instanceof Error ? err.message : "Generate failed",
     });
+  } finally {
+    if (activeAbort === abort) activeAbort = null;
   }
 }
 
 function applyEvent(event: GenerateEvent) {
   const s = useSketch.getState();
   if (event.type === "capture") {
-    s.patchGeneration({ phase: "capturing" });
+    // Stay on reading in the UI — "capturing" already finished client-side.
+    s.patchGeneration({ phase: "reading" });
   }
   if (event.type === "read") {
     s.patchGeneration({
@@ -106,7 +159,6 @@ function applyEvent(event: GenerateEvent) {
     });
   }
   if (event.type === "graph") {
-    // Snapshot first so Ctrl+Z can restore the pre-generate sketch.
     s.applyGeneratedGraph(event.doc);
   }
   if (event.type === "plan") {
@@ -144,30 +196,35 @@ async function readInkText(
   const inkPng = captureInkOcrPng(strokes);
   if (!inkPng) return "";
 
-  // Prefer real OCR. Cluster guess is only a weak fallback.
+  const guess = guessWordFromStrokeClusters(strokes);
+
   try {
     const { createWorker } = await import("tesseract.js");
     const worker = await createWorker("eng");
-    await worker.setParameters({
-      tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ",
-    });
-    const result = await worker.recognize(inkPng);
-    await worker.terminate();
-    const text = (result.data.text || "").trim();
-    if (text && detectPatternWord(text)) return text;
-    if (text.length >= 2) return text;
+    try {
+      await worker.setParameters({
+        tessedit_char_whitelist:
+          "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ",
+      });
+      const result = await worker.recognize(inkPng);
+      const text = (result.data.text || "").trim();
+      if (text && fuzzyDetectPatternWord(text)) return text;
+      if (text.length >= 2 && text.length <= 24) return text;
+    } finally {
+      await worker.terminate().catch(() => undefined);
+    }
   } catch {
     /* fall through */
   }
 
-  return guessWordFromStrokeClusters(strokes);
+  return guess;
 }
 
 /** Weak fallback only when OCR fails — never short-circuit real reading. */
 function guessWordFromStrokeClusters(
   strokes: { points: { x: number; y: number }[] }[]
 ): string {
-  if (strokes.length < 2 || strokes.length > 10) return "";
+  if (strokes.length < 2 || strokes.length > 12) return "";
   const boxes = strokes.map((s) => {
     let minX = Infinity;
     let maxX = -Infinity;
@@ -199,7 +256,6 @@ function guessWordFromStrokeClusters(
     }
   }
 
-  // Require letter-like tall clusters sitting in a horizontal word row.
   if (letters.length < 3 || letters.length > 7) return "";
   const avgH = letters.reduce((a, l) => a + l.h, 0) / letters.length;
   const avgW = letters.reduce((a, l) => a + l.w, 0) / letters.length;
@@ -218,4 +274,19 @@ function guessWordFromStrokeClusters(
 
 function wait(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(fallback), ms);
+    promise
+      .then((v) => {
+        clearTimeout(t);
+        resolve(v);
+      })
+      .catch(() => {
+        clearTimeout(t);
+        resolve(fallback);
+      });
+  });
 }
