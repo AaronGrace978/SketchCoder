@@ -20,11 +20,11 @@ PrivilegesRequired=lowest
 Source: "..\..\dist\SketchCoder-Windows-x64\*"; DestDir: "{app}"; Flags: recursesubdirs
 
 [Icons]
-Name: "{group}\SketchCoder"; Filename: "{app}\SketchCoder.exe"
-Name: "{userdesktop}\SketchCoder"; Filename: "{app}\SketchCoder.exe"; Tasks: desktopicon
+Name: "{group}\SketchCoder"; Filename: "{app}\SketchCoder.bat"
+Name: "{userdesktop}\SketchCoder"; Filename: "{app}\SketchCoder.bat"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"
 
 [Run]
-Filename: "{app}\SketchCoder.exe"; Description: "Launch SketchCoder"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\SketchCoder.bat"; Description: "Launch SketchCoder"; Flags: nowait postinstall skipifsilent

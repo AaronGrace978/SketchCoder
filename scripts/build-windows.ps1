@@ -43,6 +43,8 @@ npx --yes @yao-pkg/pkg@6.6.0 scripts/launcher.cjs `
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Pop-Location
 
+Copy-Item (Join-Path $Root "packaging\windows\SketchCoder.bat") (Join-Path $Dist "SketchCoder.bat")
+
 $Zip = Join-Path $Root "dist\SketchCoder-Windows-x64.zip"
 if (Test-Path $Zip) { Remove-Item -Force $Zip }
 Compress-Archive -Path (Join-Path $Dist "*") -DestinationPath $Zip -Force

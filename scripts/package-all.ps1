@@ -74,6 +74,7 @@ $WinApp = Join-Path $WinDir "app"
 Stage-App $WinApp
 Write-Readme $WinDir
 Pkg-Launcher "node20-win-x64" (Join-Path $WinDir "SketchCoder.exe")
+Copy-Item (Join-Path $Root "packaging\windows\SketchCoder.bat") (Join-Path $WinDir "SketchCoder.bat")
 $WinZip = Join-Path $DistRoot "SketchCoder-Windows-x64.zip"
 Compress-Archive -Path (Join-Path $WinDir "*") -DestinationPath $WinZip -Force
 
