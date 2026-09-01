@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SketchCoder
+Comment=Sketch systems. The agent codes them.
+Exec=PLACEHOLDER_BIN
+Icon=PLACEHOLDER_ICON
+Terminal=true
+Categories=Development;IDE;
+StartupWMClass=SketchCoder

@@ -9,7 +9,9 @@
     "dev": "npm run dev -w @sketchcoder/web",
     "build": "npm run build -w @sketchcoder/web",
     "start": "npm run start -w @sketchcoder/web",
-    "verify": "npx tsx scripts/verify-scaffold.ts"
+    "verify": "npx tsx scripts/verify-scaffold.ts",
+    "package:windows": "powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
+    "package:all": "powershell -ExecutionPolicy Bypass -File scripts/package-all.ps1"
   },
   "devDependencies": {
     "tsx": "^4.23.13"

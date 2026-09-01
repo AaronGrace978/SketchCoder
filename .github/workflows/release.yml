@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Package Windows
+        shell: pwsh
+        run: ./scripts/package-all.ps1 -Platform windows
+      - name: Stage Windows artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact-win | Out-Null
+          Copy-Item dist/SketchCoder-Windows-x64.zip artifact-win/
+          if (Test-Path dist/SketchCoder-Windows-x64-Setup.exe) {
+            Copy-Item dist/SketchCoder-Windows-x64-Setup.exe artifact-win/
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: artifact-win/*
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Package macOS
+        run: chmod +x scripts/package-macos.sh && ./scripts/package-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            dist/SketchCoder-macOS-arm64.zip
+            dist/SketchCoder-macOS-x64.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Package Linux
+        run: chmod +x scripts/package-linux.sh && ./scripts/package-linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/SketchCoder-Linux-x64.tar.gz
+
+  release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Flatten release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "*.exe" \) -exec cp {} release-assets/ \;
+          ls -lh release-assets
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release-assets/*

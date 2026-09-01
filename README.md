@@ -59,4 +59,41 @@ npm run verify   # offline smoke tests for scaffold paths
 ```bash
 npm run dev    # studio + landing
 npm run build  # production build
+npm run package:windows   # SketchCoder.exe + zip (Windows x64)
+npm run package:all       # all platforms (Windows builds locally; mac/linux need CI or native OS)
 ```
+
+## Download (installable builds)
+
+Get the latest from **[Releases](https://github.com/AaronGrace978/SketchCoder/releases)**.
+
+| Platform | Download | Run |
+| --- | --- | --- |
+| **Windows x64** | `SketchCoder-Windows-x64.zip` or `SketchCoder-Windows-x64-Setup.exe` | Double-click **SketchCoder.exe** |
+| **macOS Apple Silicon** | `SketchCoder-macOS-arm64.zip` | Run **SketchCoder** or open **SketchCoder.app** |
+| **macOS Intel** | `SketchCoder-macOS-x64.zip` | Run **SketchCoder** |
+| **Linux / Steam Deck** | `SketchCoder-Linux-x64.tar.gz` | Extract, run `./install-linux.sh`, launch **sketchcoder** |
+
+Studio opens at `http://127.0.0.1:3005/studio`. No Node install required.
+
+Optional vision: add `OPENAI_API_KEY` in `app/apps/web/.env.local` inside the extracted folder.
+
+### Windows
+
+1. Download **SketchCoder-Windows-x64.zip** (portable) or **SketchCoder-Windows-x64-Setup.exe** (installer)
+2. Unzip or install anywhere
+3. Double-click **SketchCoder.exe**
+
+### macOS
+
+1. Download the zip for your chip (arm64 = M1/M2/M3, x64 = Intel)
+2. Unzip, then run **SketchCoder** or **SketchCoder.app**
+3. If Gatekeeper blocks it: right-click → Open → Open
+
+### Linux / Steam Deck
+
+1. Download **SketchCoder-Linux-x64.tar.gz** and extract to `~/SketchCoder`
+2. Run `./install-linux.sh` once for a menu shortcut
+3. See **STEAMDECK.md** in the folder to add as a non-Steam game
+
+Build yourself: `npm run package:windows` (Windows) or see `scripts/package-macos.sh` / `scripts/package-linux.sh`.
