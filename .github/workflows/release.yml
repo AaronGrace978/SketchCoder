@@ -18,17 +18,19 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Package Windows
+      - name: Build Electron (Windows)
         shell: pwsh
-        run: ./scripts/package-all.ps1 -Platform windows
+        run: npm run package:windows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Stage Windows artifacts
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifact-win | Out-Null
-          Copy-Item dist/SketchCoder-Windows-x64.zip artifact-win/
-          if (Test-Path dist/SketchCoder-Windows-x64-Setup.exe) {
-            Copy-Item dist/SketchCoder-Windows-x64-Setup.exe artifact-win/
-          }
+          Get-ChildItem dist -File | Where-Object {
+            $_.Name -match 'SketchCoder-Windows' -or $_.Extension -in '.exe','.zip'
+          } | ForEach-Object { Copy-Item $_.FullName artifact-win/ }
+          Get-ChildItem artifact-win
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -43,14 +45,19 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Package macOS
-        run: chmod +x scripts/package-macos.sh && ./scripts/package-macos.sh
+      - name: Build Electron (macOS)
+        run: npm run package:macos
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Stage macOS artifacts
+        run: |
+          mkdir -p artifact-mac
+          find dist -maxdepth 1 -type f \( -name 'SketchCoder-macOS*' -o -name '*.dmg' -o -name '*.zip' \) -exec cp {} artifact-mac/ \;
+          ls -lh artifact-mac
       - uses: actions/upload-artifact@v4
         with:
           name: macos
-          path: |
-            dist/SketchCoder-macOS-arm64.zip
-            dist/SketchCoder-macOS-x64.zip
+          path: artifact-mac/*
 
   build-linux:
     runs-on: ubuntu-latest
@@ -61,12 +68,19 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Package Linux
-        run: chmod +x scripts/package-linux.sh && ./scripts/package-linux.sh
+      - name: Build Electron (Linux)
+        run: npm run package:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Stage Linux artifacts
+        run: |
+          mkdir -p artifact-linux
+          find dist -maxdepth 1 -type f \( -name 'SketchCoder-Linux*' -o -name '*.AppImage' -o -name '*.tar.gz' \) -exec cp {} artifact-linux/ \;
+          ls -lh artifact-linux
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: dist/SketchCoder-Linux-x64.tar.gz
+          path: artifact-linux/*
 
   release:
     needs: [build-windows, build-macos, build-linux]
@@ -78,10 +92,19 @@ jobs:
       - name: Flatten release assets
         run: |
           mkdir -p release-assets
-          find artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "*.exe" \) -exec cp {} release-assets/ \;
+          find artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "*.exe" -o -name "*.dmg" -o -name "*.AppImage" \) -exec cp {} release-assets/ \;
           ls -lh release-assets
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
+          body: |
+            ## SketchCoder Electron
+
+            Native desktop app (Electron) with the studio UI and local Next.js server.
+
+            ### Downloads
+            - **Windows**: `SketchCoder-Windows-x64.exe` (installer) or `.zip` (portable)
+            - **macOS**: `SketchCoder-macOS-arm64` / `x64` (`.zip` or `.dmg`)
+            - **Linux / Steam Deck**: `.AppImage` or `.tar.gz`
           files: release-assets/*

@@ -1,6 +1,10 @@
 {
   "name": "sketchcoder",
+  "version": "0.5.0",
   "private": true,
+  "description": "SketchCoder — draw systems, generate scaffolds",
+  "author": "SketchCoder",
+  "main": "electron/main.cjs",
   "workspaces": [
     "apps/web",
     "packages/*"
@@ -10,10 +14,19 @@
     "build": "npm run build -w @sketchcoder/web",
     "start": "npm run start -w @sketchcoder/web",
     "verify": "npx tsx scripts/verify-scaffold.ts",
-    "package:windows": "powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
-    "package:all": "powershell -ExecutionPolicy Bypass -File scripts/package-all.ps1"
+    "electron:dev": "npm run electron:dev:win",
+    "electron:dev:win": "powershell -ExecutionPolicy Bypass -File scripts/electron-dev.ps1",
+    "electron:start": "electron .",
+    "stage:electron": "node scripts/stage-electron-app.cjs",
+    "package:electron": "npm run build && npm run stage:electron && electron-builder",
+    "package:windows": "npm run build && npm run stage:electron && electron-builder --win --x64",
+    "package:macos": "npm run build && npm run stage:electron && electron-builder --mac",
+    "package:linux": "npm run build && npm run stage:electron && electron-builder --linux --x64",
+    "package:all": "npm run package:windows"
   },
   "devDependencies": {
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12",
     "tsx": "^4.23.13"
   }
 }

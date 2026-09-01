@@ -1,7 +1,7 @@
 node_modules
 .next
 dist
-dist
+build
 .turbo
 .env
 .env.local

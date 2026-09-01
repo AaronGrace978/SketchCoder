@@ -6,16 +6,18 @@ Draw Projects Like a Boss.
 
 Sketch systems with your mouse — or spell a word like **RAG** — and the agent screenshots the board and writes the scaffolding.
 
-## Quick start
+**Desktop product:** SketchCoder ships as a native **Electron** app (Windows, macOS, Linux).
+
+## Quick start (dev)
 
 ```bash
 npm install
-npm run dev
+npm run electron:dev   # Electron window + Next.js studio
+# or browser-only:
+npm run dev            # http://localhost:3005/studio
 ```
 
-Open [http://localhost:3000](http://localhost:3000) (or the port Next prints). Studio lives at `/studio`.
-
-Optional vision reading of handwriting — add `apps/web/.env.local`:
+Optional vision — open **Settings** in the studio and add an Ollama Cloud or OpenAI key, or put keys in `apps/web/.env.local`:
 
 ```
 OPENAI_API_KEY=sk-...
@@ -39,7 +41,7 @@ Without a key, Generate still works from the graph, OCR/heuristics, and pattern 
 | Draw Client → API → Store | Matches CRUD (or your typed nodes) and scaffolds |
 | Intent field says “production RAG…” | Same expansion without handwriting |
 
-Ctrl+Z undoes a Generate board replace. Optional vision: set `OPENAI_API_KEY` in `apps/web/.env.local`.
+Ctrl+Z undoes a Generate board replace.
 
 ```bash
 npm run verify   # offline smoke tests for scaffold paths
@@ -49,6 +51,7 @@ npm run verify   # offline smoke tests for scaffold paths
 
 | Path | Role |
 | --- | --- |
+| `electron/` | Electron main process (desktop shell) |
 | `apps/web` | Next.js landing + studio canvas |
 | `packages/graph` | Sketch document model + pattern demos |
 | `packages/templates` | RAG / CRUD / agent / webhook scaffolds |
@@ -57,10 +60,11 @@ npm run verify   # offline smoke tests for scaffold paths
 ## Scripts
 
 ```bash
-npm run dev    # studio + landing
-npm run build  # production build
-npm run package:windows   # SketchCoder.exe + zip (Windows x64)
-npm run package:all       # all platforms (Windows builds locally; mac/linux need CI or native OS)
+npm run electron:dev     # desktop app in development
+npm run package:windows  # Windows installer + zip
+npm run package:macos    # macOS dmg/zip (run on macOS)
+npm run package:linux    # Linux AppImage + tar.gz (run on Linux)
+npm run verify
 ```
 
 ## Download (installable builds)
@@ -69,31 +73,26 @@ Get the latest from **[Releases](https://github.com/AaronGrace978/SketchCoder/re
 
 | Platform | Download | Run |
 | --- | --- | --- |
-| **Windows x64** | `SketchCoder-Windows-x64.zip` or `SketchCoder-Windows-x64-Setup.exe` | Double-click **SketchCoder.exe** |
-| **macOS Apple Silicon** | `SketchCoder-macOS-arm64.zip` | Run **SketchCoder** or open **SketchCoder.app** |
-| **macOS Intel** | `SketchCoder-macOS-x64.zip` | Run **SketchCoder** |
-| **Linux / Steam Deck** | `SketchCoder-Linux-x64.tar.gz` | Extract, run `./install-linux.sh`, launch **sketchcoder** |
+| **Windows x64** | `SketchCoder-Windows-x64.exe` or `.zip` | Installer, or unzip and run **SketchCoder.exe** |
+| **macOS** | `SketchCoder-macOS-arm64` / `x64` (`.dmg` or `.zip`) | Open the app |
+| **Linux / Steam Deck** | `.AppImage` or `.tar.gz` | Run AppImage, or extract and launch |
 
-Studio opens at `http://127.0.0.1:3005/studio`. No Node install required.
-
-Optional vision: add `OPENAI_API_KEY` in `app/apps/web/.env.local` inside the extracted folder.
+Studio opens inside the Electron window. No separate browser or Node install required for release builds.
 
 ### Windows
 
-1. Download **SketchCoder-Windows-x64.zip** (portable) or **SketchCoder-Windows-x64-Setup.exe** (installer)
-2. Unzip or install anywhere
-3. Double-click **SketchCoder.exe**
+1. Download the installer or portable zip
+2. Run **SketchCoder**
 
 ### macOS
 
-1. Download the zip for your chip (arm64 = M1/M2/M3, x64 = Intel)
-2. Unzip, then run **SketchCoder** or **SketchCoder.app**
+1. Download the zip/dmg for your chip (arm64 = Apple Silicon, x64 = Intel)
+2. Open **SketchCoder**
 3. If Gatekeeper blocks it: right-click → Open → Open
 
 ### Linux / Steam Deck
 
-1. Download **SketchCoder-Linux-x64.tar.gz** and extract to `~/SketchCoder`
-2. Run `./install-linux.sh` once for a menu shortcut
-3. See **STEAMDECK.md** in the folder to add as a non-Steam game
+1. Download the AppImage or tar.gz
+2. For Steam Deck tips see `packaging/linux/STEAMDECK.md`
 
-Build yourself: `npm run package:windows` (Windows) or see `scripts/package-macos.sh` / `scripts/package-linux.sh`.
+Build yourself: `npm run package:windows` (Windows) / `package:macos` / `package:linux` on the matching OS.

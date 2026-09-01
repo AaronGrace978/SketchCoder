@@ -211,7 +211,7 @@ export function SettingsPanel() {
               </div>
 
               <p className="border-t border-line pt-3 text-[12px] leading-relaxed text-muted">
-                Stored in your browser only. Generate uses this for board vision and optional
+                Stored on this device only. Generate uses this for board vision and optional
                 scaffold polish. Without a key, OCR + templates still work.
               </p>
             </div>

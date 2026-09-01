@@ -1,0 +1,52 @@
+appId: com.sketchcoder.app
+productName: SketchCoder
+copyright: Copyright © SketchCoder
+directories:
+  output: dist
+  buildResources: packaging/icons
+files:
+  - electron/**/*
+  - package.json
+extraResources:
+  - from: build/electron-resources/app
+    to: app
+    filter:
+      - "**/*"
+asar: true
+npmRebuild: false
+afterPack: scripts/after-pack.cjs
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: zip
+      arch: [x64]
+  artifactName: SketchCoder-Windows-${arch}.${ext}
+  icon: packaging/icons/icon-512.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: SketchCoder
+mac:
+  target:
+    - target: zip
+      arch: [arm64, x64]
+    - target: dmg
+      arch: [arm64, x64]
+  artifactName: SketchCoder-macOS-${arch}.${ext}
+  category: public.app-category.developer-tools
+  icon: packaging/icons/icon-512.png
+  hardenedRuntime: false
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: tar.gz
+      arch: [x64]
+  artifactName: SketchCoder-Linux-${arch}.${ext}
+  category: Development
+  icon: packaging/icons/icon-512.png
+  synopsis: Draw systems, generate scaffolds
+  description: SketchCoder — draw systems with the mouse and generate scaffolds.
