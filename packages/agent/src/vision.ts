@@ -1,4 +1,4 @@
-import type { SketchDoc } from "@sketchcoder/graph";
+import type { NodeShape, SketchDoc, SketchNode } from "@sketchcoder/graph";
 import {
   detectPatternWord,
   docForPattern,
@@ -163,7 +163,7 @@ async function callVision(args: {
     }
 
     if (parsed.nodes?.length) {
-      const nodes = parsed.nodes
+      const nodes: SketchNode[] = parsed.nodes
         .filter(
           (n) =>
             n &&
@@ -174,11 +174,21 @@ async function callVision(args: {
             Number.isFinite(n.w) &&
             Number.isFinite(n.h)
         )
-        .map((n) => ({
-          ...n,
-          type: isNodeType(n.type) ? n.type : "service",
-          shape: n.shape === "rounded" || n.shape === "diamond" ? n.shape : "rect",
-        }));
+        .map((n) => {
+          const shape: NodeShape =
+            n.shape === "rounded" || n.shape === "diamond" ? n.shape : "rect";
+          return {
+            id: n.id,
+            label: n.label,
+            x: n.x,
+            y: n.y,
+            w: n.w,
+            h: n.h,
+            notes: n.notes,
+            type: isNodeType(n.type) ? n.type : "service",
+            shape,
+          };
+        });
       if (nodes.length) {
         const ids = new Set(nodes.map((n) => n.id));
         const edges = (parsed.edges || []).filter(
