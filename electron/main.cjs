@@ -6,6 +6,7 @@ const { app, BrowserWindow, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
+const net = require("node:net");
 const path = require("node:path");
 
 const DEFAULT_PORT = Number(process.env.PORT || 3005);
@@ -35,6 +36,29 @@ function resolveServerEntry() {
     if (fs.existsSync(p)) return p;
   }
   return null;
+}
+
+/**
+ * Never reuse a port someone else owns — a leftover dev server or an older
+ * SketchCoder build would otherwise serve stale UI inside this window.
+ */
+function findFreePort(start, tries = 40) {
+  return new Promise((resolve, reject) => {
+    const attempt = (port, left) => {
+      if (left <= 0) {
+        reject(new Error("No free port available for the SketchCoder server."));
+        return;
+      }
+      const probe = net.createServer();
+      probe.unref();
+      probe.on("error", () => attempt(port + 1, left - 1));
+      probe.listen(port, HOST, () => {
+        const chosen = probe.address().port;
+        probe.close(() => resolve(chosen));
+      });
+    };
+    attempt(start, tries);
+  });
 }
 
 function waitForServer(url, attempts = 80) {
@@ -162,6 +186,7 @@ async function boot() {
       );
     });
   } else {
+    serverPort = await findFreePort(DEFAULT_PORT);
     startProductionServer();
     startUrl = `http://${HOST}:${serverPort}/studio`;
     await waitForServer(`http://${HOST}:${serverPort}`);

@@ -1,4 +1,5 @@
 import {
+  detectInkPattern,
   fuzzyDetectPatternWord,
   normalizeSketchDoc,
   type SketchDoc,
@@ -51,7 +52,7 @@ export async function* generateScaffold(
     if ((!read?.doc || read.source === "graph") && options.ocrText) {
       const { docForPattern } = await import("@sketchcoder/graph");
       const pattern =
-        fuzzyDetectPatternWord(options.ocrText) ||
+        detectInkPattern(options.ocrText) ||
         fuzzyDetectPatternWord(doc.intent);
       if (pattern) {
         const short = options.ocrText.trim().length <= 12;
@@ -97,7 +98,7 @@ export async function* generateScaffold(
   if (!working.nodes.length) {
     const { docForPattern } = await import("@sketchcoder/graph");
     const pattern =
-      fuzzyDetectPatternWord(options.ocrText || "") ||
+      detectInkPattern(options.ocrText || "") ||
       fuzzyDetectPatternWord(working.intent);
     if (pattern) {
       working = normalizeSketchDoc(docForPattern(pattern, working.intent));
@@ -115,7 +116,7 @@ export async function* generateScaffold(
   if (working.nodes.length > 0 && working.nodes.length < 3) {
     const { docForPattern } = await import("@sketchcoder/graph");
     const pattern =
-      fuzzyDetectPatternWord(options.ocrText || "") ||
+      detectInkPattern(options.ocrText || "") ||
       fuzzyDetectPatternWord(working.intent);
     if (pattern) {
       working = normalizeSketchDoc(docForPattern(pattern, working.intent));
@@ -129,13 +130,29 @@ export async function* generateScaffold(
     }
   }
 
+  // Marks on the board we could not read: hand back a runnable starter rather
+  // than a dead end, and say plainly what was assumed.
+  let guessed = false;
+  if (!working.nodes.length && (options.imageDataUrl || options.ocrText)) {
+    const { starterDoc } = await import("@sketchcoder/graph");
+    working = normalizeSketchDoc(starterDoc(doc.intent));
+    guessed = true;
+    yield {
+      type: "read",
+      text: options.ocrText?.trim() || "unreadable ink",
+      pattern: null,
+      source: "offline",
+    };
+    yield { type: "graph", doc: working };
+  }
+
   if (!working.nodes.length) {
     yield {
       type: "done",
       summary:
-        "Could not read a system from the board. Spell a word like RAG, load the RAG demo, or sketch Client → API → Store.",
+        "Nothing on the board yet. Write RAG with the pen, load the RAG demo, or sketch Client → API → Store.",
       nextSteps: [
-        "Use Clear board, then write RAG with the pen.",
+        "Write RAG, CRUD, AGENT, or WEBHOOK with the pen.",
         "Or click Load RAG demo and hit Generate.",
         "Add a model key in Settings for handwriting vision.",
       ],
@@ -145,7 +162,9 @@ export async function* generateScaffold(
   }
 
   working = normalizeSketchDoc(working);
-  const base = scaffoldFromGraph(working);
+  const base = guessed
+    ? withGuessNotice(scaffoldFromGraph(working))
+    : scaffoldFromGraph(working);
   const adapted = options.apiKey
     ? await maybeAdapt(working, base, options)
     : base;
@@ -183,6 +202,18 @@ export async function* generateScaffold(
     summary: adapted.summary,
     nextSteps: adapted.nextSteps,
     pattern: adapted.pattern,
+  };
+}
+
+function withGuessNotice(base: ScaffoldResult): ScaffoldResult {
+  return {
+    ...base,
+    summary: `Could not read the handwriting, so this is a starter system. ${base.summary}`,
+    nextSteps: [
+      "Write the word bigger (RAG, CRUD, AGENT, WEBHOOK) and Generate again.",
+      "Or type what you want in the Intent box.",
+      ...base.nextSteps,
+    ],
   };
 }
 

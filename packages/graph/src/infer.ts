@@ -177,3 +177,32 @@ export function fuzzyDetectPatternWord(text: string): PatternWord | null {
 
   return null;
 }
+
+/**
+ * Handwriting is often cut short ("RA" for RAG). Ink-only detection adds
+ * prefix matching on top of fuzzy matching. Never use this on intent prose —
+ * short prefixes would match far too eagerly.
+ */
+export function detectInkPattern(text: string): PatternWord | null {
+  const fuzzy = fuzzyDetectPatternWord(text);
+  if (fuzzy) return fuzzy;
+
+  const compact = cleanOcrText(text).toLowerCase().replace(/\s+/g, "");
+  if (compact.length < 2 || compact.length > 8) return null;
+
+  for (const entry of OCR_NEAR) {
+    const canonical = entry.forms[0];
+    if (canonical.startsWith(compact)) return entry.pattern;
+  }
+
+  // Tolerate one wrong character inside a partial word ("rq" → rag).
+  for (const entry of OCR_NEAR) {
+    const canonical = entry.forms[0];
+    const head = canonical.slice(0, compact.length);
+    if (head.length === compact.length && levenshtein(compact, head) <= 1) {
+      return entry.pattern;
+    }
+  }
+
+  return null;
+}

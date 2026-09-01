@@ -1,5 +1,5 @@
 import type { GenerateEvent } from "@sketchcoder/agent";
-import { fuzzyDetectPatternWord } from "@sketchcoder/graph";
+import { detectInkPattern, fuzzyDetectPatternWord } from "@sketchcoder/graph";
 import { captureBoardPng, captureInkOcrPng } from "./screenshot";
 import { loadSettings, settingsForApi } from "./settings";
 import { useSketch } from "./store";
@@ -81,7 +81,7 @@ export async function runGenerate() {
 
   if (abort.signal.aborted) return;
 
-  const ocrPattern = fuzzyDetectPatternWord(ocrText);
+  const ocrPattern = detectInkPattern(ocrText);
   const localHint =
     (ocrPattern && ocrText.trim()) ||
     (intentPattern ? intentPattern.toUpperCase() : "") ||
@@ -176,7 +176,8 @@ function applyEvent(event: GenerateEvent) {
     s.upsertFile({ path: event.path, content: event.content });
   }
   if (event.type === "done") {
-    const failed = event.summary.toLowerCase().includes("could not read");
+    // A run only failed if it produced no scaffolding at all.
+    const failed = s.generation.files.length === 0;
     s.patchGeneration({
       status: failed ? "error" : "done",
       phase: "idle",
@@ -208,7 +209,7 @@ async function readInkText(
       });
       const result = await worker.recognize(inkPng);
       const text = (result.data.text || "").trim();
-      if (text && fuzzyDetectPatternWord(text)) return text;
+      if (text && detectInkPattern(text)) return text;
       if (text.length >= 2 && text.length <= 24) return text;
     } finally {
       await worker.terminate().catch(() => undefined);
@@ -256,19 +257,17 @@ function guessWordFromStrokeClusters(
     }
   }
 
-  if (letters.length < 3 || letters.length > 7) return "";
+  if (letters.length < 2 || letters.length > 7) return "";
   const avgH = letters.reduce((a, l) => a + l.h, 0) / letters.length;
   const avgW = letters.reduce((a, l) => a + l.w, 0) / letters.length;
   const wordLike =
-    letters.every((l) => l.h > avgH * 0.4 && l.h > l.w * 0.55) &&
-    avgH > 28 &&
-    avgW < avgH * 1.6;
+    letters.every((l) => l.h > avgH * 0.35) && avgH > 20 && avgW < avgH * 2;
   if (!wordLike) return "";
 
-  if (letters.length === 3) return "RAG";
+  if (letters.length <= 3) return "RAG";
   if (letters.length === 4) return "CRUD";
   if (letters.length === 5) return "AGENT";
-  if (letters.length === 7) return "WEBHOOK";
+  if (letters.length >= 6) return "WEBHOOK";
   return "";
 }
 

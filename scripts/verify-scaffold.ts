@@ -6,6 +6,7 @@ import { generateScaffold } from "../packages/agent/src/generate";
 import {
   emptyDoc,
   ragDemoDoc,
+  detectInkPattern,
   detectPatternWord,
   fuzzyDetectPatternWord,
 } from "../packages/graph/src";
@@ -39,6 +40,13 @@ async function main() {
     fuzzyDetectPatternWord("Production RAG with citations") === "rag",
     "intent RAG"
   );
+
+  // Partial handwriting must still resolve.
+  assert(detectInkPattern("RA") === "rag", "ink RA→rag");
+  assert(detectInkPattern("CRU") === "crud", "ink CRU→crud");
+  assert(detectInkPattern("AGEN") === "agent", "ink AGEN→agent");
+  assert(detectInkPattern("") === null, "empty ink → null");
+  assert(fuzzyDetectPatternWord("ra") === null, "prose 'ra' stays unmatched");
 
   const rag = scaffoldFromGraph(ragDemoDoc());
   assert(rag.pattern === "rag", "rag pattern");
@@ -144,6 +152,25 @@ async function main() {
     "OCR beats stray boxes"
   );
   assert(boxesPlusWord.some((e) => e.type === "graph"), "OCR replaces sparse boxes");
+
+  // Unreadable scribble must still scaffold instead of dead-ending.
+  const scribble = await collect(
+    generateScaffold(emptyDoc(), {
+      ocrText: "~~~",
+      imageDataUrl: "data:image/png;base64,aa",
+    })
+  );
+  assert(
+    scribble.filter((e) => e.type === "file").length > 0,
+    "unreadable ink still yields files"
+  );
+  const scribbleDone = scribble.find((e) => e.type === "done") as
+    | { summary?: string }
+    | undefined;
+  assert(
+    scribbleDone?.summary?.toLowerCase().includes("starter"),
+    "unreadable ink is labelled a starter system"
+  );
 
   console.log("verify-scaffold: all checks passed");
 }

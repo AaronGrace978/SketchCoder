@@ -83,6 +83,16 @@ export function docForPattern(pattern: PatternWord, intentHint = ""): SketchDoc 
   }
 }
 
+/**
+ * Neutral starting point when the board has marks we could not read.
+ * Better to hand back a runnable Client → API → Store than nothing.
+ */
+export function starterDoc(intentHint = ""): SketchDoc {
+  return crudDemoDoc(
+    intentHint.trim() || "Starter system: client, API, and a store"
+  );
+}
+
 export function crudDemoDoc(intent = "CRUD API for notes with list create update delete"): SketchDoc {
   return {
     version: 1,
